@@ -333,7 +333,17 @@ class Storage:
                 "Postgres support requires psycopg. Install dependencies from requirements.txt."
             ) from exc
 
-        return psycopg.connect(self.database_url)
+        try:
+            return psycopg.connect(self.database_url)
+        except psycopg.OperationalError as exc:
+            message = str(exc)
+            if "Network is unreachable" in message:
+                raise RuntimeError(
+                    "Postgres connection failed because the configured host is not "
+                    "reachable from GitHub Actions. If you are using Supabase, use "
+                    "the pooled IPv4 connection string instead of the direct database host."
+                ) from exc
+            raise
 
     def _sql(self, template):
         placeholder = "?" if self.backend == "sqlite" else "%s"
