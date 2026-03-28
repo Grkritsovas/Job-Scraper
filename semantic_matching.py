@@ -113,7 +113,7 @@ class ProfileMatcher:
             "second_profile": second_profile,
             "second_score": second_score,
             "score_margin": top_score - second_score,
-            "fit_summary": format_fit_summary(ranked_profiles, top_score - second_score),
+            "fit_summary": format_fit_summary(ranked_profiles),
         }
 
 
@@ -180,12 +180,11 @@ def score_to_percent(score):
     return max(0, round(score * 100))
 
 
-def format_fit_summary(ranked_profiles, margin):
-    score_parts = []
-    for index, (label, score) in enumerate(ranked_profiles):
-        prefix = "✓ " if index == 0 else ""
-        score_parts.append(f"{prefix}{label} {score_to_percent(score)}%")
-    return " | ".join(score_parts)
+def format_fit_summary(ranked_profiles):
+    return " | ".join(
+        f"{label} {score_to_percent(score)}%"
+        for label, score in ranked_profiles
+    )
 
 
 def rank_jobs(jobs):

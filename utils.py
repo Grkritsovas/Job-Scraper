@@ -1,3 +1,4 @@
+import json
 import re
 from urllib.parse import urlparse
 
@@ -58,12 +59,30 @@ def get_visible_text(html):
     return soup.get_text(separator=" ", strip=True)
 
 
+def extract_ashby_description_text(html):
+    match = re.search(r'"descriptionHtml":"((?:\\.|[^"])*)"', html)
+    if not match:
+        return ""
+
+    try:
+        description_html = json.loads(f'"{match.group(1)}"')
+    except json.JSONDecodeError:
+        return ""
+
+    return get_visible_text(description_html)
+
+
 def fetch_job_description(url):
     try:
         response = requests.get(url, headers=HEADERS, timeout=20)
         response.raise_for_status()
     except requests.RequestException:
         return ""
+
+    if "jobs.ashbyhq.com" in url:
+        ashby_description = extract_ashby_description_text(response.text)
+        if len(ashby_description) >= MIN_VISIBLE_TEXT_LENGTH:
+            return ashby_description
 
     visible_text = get_visible_text(response.text)
     if len(visible_text) >= MIN_VISIBLE_TEXT_LENGTH:
