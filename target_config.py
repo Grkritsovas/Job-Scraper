@@ -17,6 +17,14 @@ def load_greenhouse_targets():
     )
 
 
+def load_lever_targets():
+    return load_list_config(
+        "LEVER_COMPANIES_JSON",
+        local_file_name="lever_companies.local.json",
+        example_file_name="lever_companies.uk.example.json",
+    )
+
+
 def load_nextjs_targets():
     return load_list_config(
         "NEXTJS_URLS_JSON",
@@ -29,5 +37,6 @@ def load_configured_targets():
     return {
         "ashby": load_ashby_targets(),
         "greenhouse": load_greenhouse_targets(),
+        "lever": load_lever_targets(),
         "nextjs": load_nextjs_targets(),
     }

@@ -3,6 +3,7 @@ import os
 from ashby_scraper import collect_jobs as collect_ashby_jobs
 from emailer import send_email
 from greenhouse_scraper import collect_jobs as collect_greenhouse_jobs
+from lever_scraper import collect_jobs as collect_lever_jobs
 from nextjs_scraper import collect_jobs as collect_nextjs_jobs
 from storage import create_storage
 from target_config import load_configured_targets
@@ -15,6 +16,7 @@ def collect_all_jobs(seen_urls, storage):
     matches.extend(
         collect_greenhouse_jobs(seen_urls, storage.load_targets("greenhouse"))
     )
+    matches.extend(collect_lever_jobs(seen_urls, storage.load_targets("lever")))
     matches.extend(collect_nextjs_jobs(seen_urls, storage.load_targets("nextjs")))
     return matches
 

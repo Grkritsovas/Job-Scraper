@@ -12,15 +12,21 @@ def build_parser():
     list_parser.add_argument("source_type", nargs="?", help="Optional source filter.")
 
     add_parser = subparsers.add_parser("add", help="Add or enable a target.")
-    add_parser.add_argument("source_type", choices=["ashby", "greenhouse", "nextjs"])
+    add_parser.add_argument(
+        "source_type", choices=["ashby", "greenhouse", "lever", "nextjs"]
+    )
     add_parser.add_argument("target_value")
 
     disable_parser = subparsers.add_parser("disable", help="Disable a target.")
-    disable_parser.add_argument("source_type", choices=["ashby", "greenhouse", "nextjs"])
+    disable_parser.add_argument(
+        "source_type", choices=["ashby", "greenhouse", "lever", "nextjs"]
+    )
     disable_parser.add_argument("target_value")
 
     enable_parser = subparsers.add_parser("enable", help="Enable a target.")
-    enable_parser.add_argument("source_type", choices=["ashby", "greenhouse", "nextjs"])
+    enable_parser.add_argument(
+        "source_type", choices=["ashby", "greenhouse", "lever", "nextjs"]
+    )
     enable_parser.add_argument("target_value")
 
     return parser

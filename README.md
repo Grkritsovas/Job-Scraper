@@ -5,6 +5,7 @@ Scrapes public job boards, filters roles by your own title/location/experience r
 Current sources:
 - Ashby public job boards
 - Greenhouse Job Board API
+- Lever Postings API
 - Site-specific Next.js `__NEXT_DATA__` pages
 
 ## How It Works
@@ -50,6 +51,7 @@ That local SQLite file is enough for repeated runs on your own machine.
 Override targets with any of these:
 - `ASHBY_COMPANIES_JSON`
 - `GREENHOUSE_BOARD_TOKENS_JSON`
+- `LEVER_COMPANIES_JSON`
 - `NEXTJS_URLS_JSON`
 
 Each value can be:
@@ -81,6 +83,7 @@ python manage_targets.py disable ashby multiverse
 
 - `ASHBY_COMPANIES_JSON`
 - `GREENHOUSE_BOARD_TOKENS_JSON`
+- `LEVER_COMPANIES_JSON`
 - `NEXTJS_URLS_JSON`
 
 If you do not set the optional variables, the workflow seeds from the bundled example files.
