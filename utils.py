@@ -4,8 +4,6 @@ from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
 
-from filters import EXCLUDE, INCLUDE
-
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
@@ -57,7 +55,7 @@ def get_visible_text(html):
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
 
-    return soup.get_text(separator=" ", strip=True).lower()
+    return soup.get_text(separator=" ", strip=True)
 
 
 def fetch_job_description(url):
@@ -71,7 +69,7 @@ def fetch_job_description(url):
     if len(visible_text) >= MIN_VISIBLE_TEXT_LENGTH:
         return visible_text
 
-    return response.text.lower()
+    return response.text
 
 
 def is_uk_location(locations):
@@ -180,17 +178,6 @@ def is_engineering_role(title, description):
     ]
 
     return any(keyword in text for keyword in engineering_keywords)
-
-
-def is_relevant_title(title):
-    normalized_title = title.lower()
-
-    if any(excluded in normalized_title for excluded in EXCLUDE):
-        return False
-
-    return any(included in normalized_title for included in INCLUDE)
-
-
 def dedupe_keep_order(values):
     return list(dict.fromkeys(value for value in values if value))
 
@@ -209,16 +196,32 @@ def build_digest_bodies(jobs, max_jobs_per_email=20):
         jobs_by_company.setdefault(job["company"], []).append(job)
 
     company_blocks = []
-    for company in sorted(jobs_by_company):
+    sorted_companies = sorted(
+        jobs_by_company,
+        key=lambda company: (
+            max(job.get("top_score", 0) for job in jobs_by_company[company]),
+            company.lower(),
+        ),
+        reverse=True,
+    )
+    for company in sorted_companies:
         company_jobs = sorted(
             jobs_by_company[company],
-            key=lambda job: (job["title"].lower(), job["url"].lower()),
+            key=lambda job: (
+                job.get("top_score", 0),
+                job.get("score_margin", 0),
+                job["title"].lower(),
+                job["url"].lower(),
+            ),
+            reverse=True,
         )
         lines = [company]
         for job in company_jobs:
             location = job.get("location", "")
             location_suffix = f" | {location}" if location else ""
             lines.append(f"- {job['title']}{location_suffix}")
+            if job.get("fit_summary"):
+                lines.append(f"  Fit: {job['fit_summary']}")
             lines.append(job["url"])
         company_blocks.append((len(company_jobs), "\n".join(lines)))
 

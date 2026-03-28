@@ -9,9 +9,7 @@ from utils import (
     fetch_job_description,
     format_locations,
     get_company_name_from_url,
-    is_engineering_role,
-    is_relevant_title,
-    passes_experience_filter,
+    is_uk_location,
 )
 
 
@@ -67,8 +65,8 @@ def collect_url_jobs(url, seen_urls):
     for job in jobs:
         title = job.get("title", "")
         job_url = get_job_url(job)
-
-        if not is_relevant_title(title):
+        locations = get_job_locations(job)
+        if any(locations) and not is_uk_location(locations):
             continue
 
         if not job_url or job_url in seen_urls:
@@ -78,18 +76,14 @@ def collect_url_jobs(url, seen_urls):
         if not description:
             continue
 
-        if not is_engineering_role(title, description):
-            continue
-
-        if not passes_experience_filter(description):
-            continue
-
         matches.append(
             {
                 "company": company_name,
                 "title": title.strip(),
                 "url": job_url,
-                "location": format_locations(get_job_locations(job)),
+                "description": description,
+                "locations": locations,
+                "location": format_locations(locations),
                 "source": "nextjs",
                 "target_value": url,
             }

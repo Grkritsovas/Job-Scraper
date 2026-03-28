@@ -7,11 +7,8 @@ from utils import (
     HEADERS,
     fetch_job_description,
     format_locations,
-    is_engineering_role,
-    is_relevant_title,
     is_uk_location,
     normalize_company_name,
-    passes_experience_filter,
 )
 
 
@@ -102,9 +99,6 @@ def collect_site_jobs(site, seen_urls):
         url = get_job_url(job, site)
         locations = get_job_locations(job)
 
-        if not is_relevant_title(title):
-            continue
-
         if not is_uk_location(locations):
             continue
 
@@ -115,17 +109,13 @@ def collect_site_jobs(site, seen_urls):
         if not description:
             continue
 
-        if not is_engineering_role(title, description):
-            continue
-
-        if not passes_experience_filter(description):
-            continue
-
         matches.append(
             {
                 "company": company_name,
                 "title": title.strip(),
                 "url": url,
+                "description": description,
+                "locations": locations,
                 "location": format_locations(locations),
                 "source": "lever",
                 "target_value": site,

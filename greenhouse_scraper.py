@@ -8,11 +8,8 @@ from utils import (
     HEADERS,
     format_locations,
     get_visible_text,
-    is_engineering_role,
-    is_relevant_title,
     is_uk_location,
     normalize_company_name,
-    passes_experience_filter,
 )
 
 
@@ -89,9 +86,6 @@ def collect_board_jobs(board_token, seen_urls):
         locations = get_greenhouse_locations(job)
         location_candidates = [*locations, title]
 
-        if not is_relevant_title(title):
-            continue
-
         if not is_uk_location(location_candidates):
             continue
 
@@ -102,17 +96,13 @@ def collect_board_jobs(board_token, seen_urls):
         if not description:
             continue
 
-        if not is_engineering_role(title, description):
-            continue
-
-        if not passes_experience_filter(description):
-            continue
-
         matches.append(
             {
                 "company": company_name,
                 "title": title.strip(),
                 "url": url,
+                "description": description,
+                "locations": locations,
                 "location": format_locations(locations),
                 "source": "greenhouse",
                 "target_value": board_token,
