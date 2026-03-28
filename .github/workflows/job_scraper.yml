@@ -1,0 +1,36 @@
+name: Job Scraper
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+concurrency:
+  group: job-scraper
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    env:
+      JOB_SCRAPER_EMAIL: ${{ secrets.JOB_SCRAPER_EMAIL }}
+      JOB_SCRAPER_APP_PASSWORD: ${{ secrets.JOB_SCRAPER_APP_PASSWORD }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ASHBY_COMPANIES_JSON: ${{ vars.ASHBY_COMPANIES_JSON }}
+      GREENHOUSE_BOARD_TOKENS_JSON: ${{ vars.GREENHOUSE_BOARD_TOKENS_JSON }}
+      NEXTJS_URLS_JSON: ${{ vars.NEXTJS_URLS_JSON }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scraper
+        run: python run_all.py
