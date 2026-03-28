@@ -3,6 +3,8 @@ import re
 
 from filters import (
     AUTHORIZATION_MISMATCH_PATTERNS,
+    ELIGIBILITY_REJECT_PATTERNS,
+    HARD_ELIGIBILITY_TITLE_TERMS,
     HARD_COMMERCIAL_TERMS,
     HARD_SENIORITY_TERMS,
 )
@@ -12,7 +14,7 @@ from utils import is_uk_location, passes_experience_filter
 EMBEDDING_MODEL_NAME = os.getenv(
     "JOB_SCRAPER_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
 )
-MIN_PROFILE_SCORE = 0.50
+MIN_PROFILE_SCORE = float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.47"))
 
 PROFILE_TEXTS = {
     "SWE": (
@@ -137,6 +139,14 @@ def has_authorization_mismatch(description):
     )
 
 
+def has_eligibility_mismatch(description):
+    normalized_description = (description or "").lower()
+    return any(
+        re.search(pattern, normalized_description, flags=re.IGNORECASE)
+        for pattern in ELIGIBILITY_REJECT_PATTERNS
+    )
+
+
 def passes_hard_filters(job):
     title = job.get("title", "")
     description = job.get("description", "")
@@ -148,10 +158,16 @@ def passes_hard_filters(job):
     if title_has_hard_reject_term(title, HARD_COMMERCIAL_TERMS):
         return False
 
+    if title_has_hard_reject_term(title, HARD_ELIGIBILITY_TITLE_TERMS):
+        return False
+
     if not is_uk_location(locations):
         return False
 
     if has_authorization_mismatch(description):
+        return False
+
+    if has_eligibility_mismatch(description):
         return False
 
     if not passes_experience_filter(description):
@@ -165,11 +181,11 @@ def score_to_percent(score):
 
 
 def format_fit_summary(ranked_profiles, margin):
-    score_parts = [
-        f"{label} {score_to_percent(score)}%"
-        for label, score in ranked_profiles
-    ]
-    return f"{' | '.join(score_parts)} | Margin {score_to_percent(margin)}%"
+    score_parts = []
+    for index, (label, score) in enumerate(ranked_profiles):
+        prefix = "✓ " if index == 0 else ""
+        score_parts.append(f"{prefix}{label} {score_to_percent(score)}%")
+    return " | ".join(score_parts)
 
 
 def rank_jobs(jobs):

@@ -221,7 +221,7 @@ def build_digest_bodies(jobs, max_jobs_per_email=20):
             location_suffix = f" | {location}" if location else ""
             lines.append(f"- {job['title']}{location_suffix}")
             if job.get("fit_summary"):
-                lines.append(f"  Fit: {job['fit_summary']}")
+                lines.append(f"  Top fit: {job['fit_summary']}")
             lines.append(job["url"])
         company_blocks.append((len(company_jobs), "\n".join(lines)))
 
