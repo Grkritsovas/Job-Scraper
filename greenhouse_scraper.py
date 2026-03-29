@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from job_urls import sanitize_job_url
 from target_config import load_greenhouse_targets
 from utils import (
     HEADERS,
@@ -82,7 +83,11 @@ def collect_board_jobs(board_token, seen_urls):
 
     for job in jobs:
         title = job.get("title", "")
-        url = job.get("absolute_url", "")
+        url = sanitize_job_url(
+            job.get("absolute_url", ""),
+            source="greenhouse",
+            target_value=board_token,
+        )
         locations = get_greenhouse_locations(job)
         location_candidates = [*locations, title]
 

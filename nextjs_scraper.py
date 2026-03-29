@@ -3,6 +3,7 @@ import json
 import requests
 from bs4 import BeautifulSoup
 
+from job_urls import normalize_seed_url, sanitize_job_url
 from target_config import load_nextjs_targets
 from utils import (
     HEADERS,
@@ -15,9 +16,23 @@ from utils import (
 
 def load_urls(urls=None):
     if urls is not None:
-        return list(dict.fromkeys(url for url in urls if url))
+        return list(
+            dict.fromkeys(
+                normalized_url
+                for normalized_url in (normalize_seed_url(url) for url in urls)
+                if normalized_url
+            )
+        )
 
-    return load_nextjs_targets()
+    return list(
+        dict.fromkeys(
+            normalized_url
+            for normalized_url in (
+                normalize_seed_url(url) for url in load_nextjs_targets()
+            )
+            if normalized_url
+        )
+    )
 
 
 def fetch_nextjs_data(url):
@@ -64,7 +79,11 @@ def collect_url_jobs(url, seen_urls):
 
     for job in jobs:
         title = job.get("title", "")
-        job_url = get_job_url(job)
+        job_url = sanitize_job_url(
+            get_job_url(job),
+            source="nextjs",
+            target_value=url,
+        )
         locations = get_job_locations(job)
         if any(locations) and not is_uk_location(locations):
             continue

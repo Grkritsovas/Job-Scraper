@@ -1,5 +1,6 @@
 import requests
 
+from job_urls import sanitize_job_url
 from target_config import load_ashby_targets
 from utils import (
     HEADERS,
@@ -78,7 +79,15 @@ def collect_company_jobs(company, seen_urls):
     for job in jobs:
         title = job.get("title", "")
         job_id = job.get("id")
-        url = f"https://jobs.ashbyhq.com/{company}/{job_id}" if job_id else ""
+        url = (
+            sanitize_job_url(
+                f"https://jobs.ashbyhq.com/{company}/{job_id}",
+                source="ashby",
+                target_value=company,
+            )
+            if job_id
+            else ""
+        )
 
         locations = get_job_locations(job)
         if not is_uk_location(locations):

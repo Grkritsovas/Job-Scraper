@@ -2,6 +2,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from job_urls import sanitize_job_url
 from target_config import load_lever_targets
 from utils import (
     HEADERS,
@@ -78,14 +79,16 @@ def get_job_locations(job):
 
 
 def get_job_url(job, site):
-    return (
+    return sanitize_job_url(
         job.get("hostedUrl")
         or job.get("applyUrl")
         or (
             f"https://jobs.lever.co/{site}/{job.get('id')}"
             if job.get("id")
             else ""
-        )
+        ),
+        source="lever",
+        target_value=site,
     )
 
 
