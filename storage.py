@@ -27,6 +27,19 @@ SCHEMA_STATEMENTS = [
         first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS recipient_seen_jobs (
+        recipient_id TEXT NOT NULL,
+        job_url TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        target_value TEXT,
+        company_name TEXT,
+        title TEXT,
+        location TEXT,
+        first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (recipient_id, job_url)
+    )
+    """,
 ]
 
 
@@ -51,16 +64,30 @@ class Storage:
 
         self._ensure_postgres_schema()
 
-    def load_seen_urls(self):
-        rows = self._fetch_all(
+    def load_seen_urls(self, recipient_id):
+        recipient_rows = self._fetch_all(
+            self._sql(
+                """
+                SELECT job_url
+                FROM recipient_seen_jobs
+                WHERE recipient_id = {placeholder}
+                """
+            ),
+            (recipient_id,),
+        )
+        legacy_rows = self._fetch_all(
             "SELECT job_url FROM seen_jobs",
             (),
         )
-        return {row["job_url"] for row in rows}
+        return {
+            *(row["job_url"] for row in recipient_rows),
+            *(row["job_url"] for row in legacy_rows),
+        }
 
-    def store_seen_jobs(self, jobs):
+    def store_seen_jobs(self, recipient_id, jobs):
         rows = [
             (
+                recipient_id,
                 job["url"],
                 job["source"],
                 job.get("target_value", ""),
@@ -79,7 +106,8 @@ class Storage:
             try:
                 connection.executemany(
                     """
-                    INSERT OR IGNORE INTO seen_jobs (
+                    INSERT OR IGNORE INTO recipient_seen_jobs (
+                        recipient_id,
                         job_url,
                         source_type,
                         target_value,
@@ -87,7 +115,7 @@ class Storage:
                         title,
                         location
                     )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     rows,
                 )
@@ -101,7 +129,8 @@ class Storage:
             with connection.cursor() as cursor:
                 cursor.executemany(
                     """
-                    INSERT INTO seen_jobs (
+                    INSERT INTO recipient_seen_jobs (
+                        recipient_id,
                         job_url,
                         source_type,
                         target_value,
@@ -109,8 +138,8 @@ class Storage:
                         title,
                         location
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (job_url) DO NOTHING
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (recipient_id, job_url) DO NOTHING
                     """,
                     rows,
                 )

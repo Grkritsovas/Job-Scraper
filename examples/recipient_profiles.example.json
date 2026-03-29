@@ -1,0 +1,14 @@
+[
+  {
+    "id": "default",
+    "email": "you@example.com",
+    "semantic_profiles": [
+      "swe",
+      "data_science",
+      "ai_ml_engineer"
+    ],
+    "min_top_score": 0.45,
+    "care_about_sponsorship": false,
+    "use_sponsor_lookup": false
+  }
+]

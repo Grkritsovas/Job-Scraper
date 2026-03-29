@@ -3,7 +3,7 @@ name: Job Scraper
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 */6 * * *"
+    - cron: "17 */12 * * *"
 
 concurrency:
   group: job-scraper
@@ -16,10 +16,12 @@ jobs:
       JOB_SCRAPER_EMAIL: ${{ secrets.JOB_SCRAPER_EMAIL }}
       JOB_SCRAPER_APP_PASSWORD: ${{ secrets.JOB_SCRAPER_APP_PASSWORD }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      RECIPIENT_PROFILES_JSON: ${{ secrets.RECIPIENT_PROFILES_JSON }}
       ASHBY_COMPANIES_JSON: ${{ vars.ASHBY_COMPANIES_JSON }}
       GREENHOUSE_BOARD_TOKENS_JSON: ${{ vars.GREENHOUSE_BOARD_TOKENS_JSON }}
       LEVER_COMPANIES_JSON: ${{ vars.LEVER_COMPANIES_JSON }}
       NEXTJS_URLS_JSON: ${{ vars.NEXTJS_URLS_JSON }}
+      SPONSOR_COMPANIES_CSV: ${{ vars.SPONSOR_COMPANIES_CSV }}
 
     steps:
       - name: Check out repository

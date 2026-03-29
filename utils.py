@@ -5,6 +5,8 @@ from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from sponsorship import format_sponsorship_summary
+
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
@@ -206,7 +208,7 @@ def format_locations(locations):
     return ", ".join(unique_locations)
 
 
-def build_digest_bodies(jobs, max_jobs_per_email=20):
+def build_digest_bodies(jobs, recipient_profile, max_jobs_per_email=20):
     if not jobs:
         return []
 
@@ -219,7 +221,7 @@ def build_digest_bodies(jobs, max_jobs_per_email=20):
         jobs_by_company,
         key=lambda company: (
             max(
-                job.get("adjusted_top_score", job.get("top_score", 0))
+                job.get("ranking_score", job.get("top_score", 0))
                 for job in jobs_by_company[company]
             ),
             company.lower(),
@@ -230,7 +232,7 @@ def build_digest_bodies(jobs, max_jobs_per_email=20):
         company_jobs = sorted(
             jobs_by_company[company],
             key=lambda job: (
-                job.get("adjusted_top_score", job.get("top_score", 0)),
+                job.get("ranking_score", job.get("top_score", 0)),
                 job.get("top_score", 0),
                 job.get("score_margin", 0),
                 job["title"].lower(),
@@ -245,6 +247,11 @@ def build_digest_bodies(jobs, max_jobs_per_email=20):
             lines.append(f"- {job['title']}{location_suffix}")
             if job.get("fit_summary"):
                 lines.append(f"  Top fit: {job['fit_summary']}")
+            if (
+                recipient_profile.get("care_about_sponsorship", False)
+                or recipient_profile.get("use_sponsor_lookup", False)
+            ):
+                lines.append(f"  {format_sponsorship_summary(job)}")
             lines.append(job["url"])
         company_blocks.append((len(company_jobs), "\n".join(lines)))
 

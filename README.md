@@ -1,6 +1,6 @@
 # Job Scraper
 
-Scrapes public job boards, filters roles by your own title/location/experience rules, and sends grouped email digests.
+Scrapes public job boards, semantically ranks roles against configurable profiles, and sends grouped email digests.
 
 Current sources:
 - Ashby public job boards
@@ -11,7 +11,9 @@ Current sources:
 ## How It Works
 
 - Targets come from environment variables, local JSON files, or bundled example seed files.
-- Seen-job state is stored in a database.
+- Jobs are scraped once per run, then enriched once with sponsorship metadata.
+- Recipient profiles are loaded from config and scored independently.
+- Seen-job state is stored in a database per recipient profile.
 - Local runs use SQLite by default in `job_scraper.db`.
 - Hosted runs should use Postgres via `DATABASE_URL`.
 
@@ -37,14 +39,97 @@ $env:JOB_SCRAPER_APP_PASSWORD = "your app password"
 $env:JOB_SCRAPER_DRY_RUN = "1"
 ```
 
-5. Run:
+5. Optional: create `recipient_profiles.local.json`.
+   If you do not, the app falls back to a single recipient using `JOB_SCRAPER_EMAIL`.
+
+6. Run:
 
 ```bash
 python run_all.py
 ```
 
 This creates `job_scraper.db` locally unless you set `DATABASE_URL`.
-That local SQLite file is enough for repeated runs on your own machine.
+
+## Recipient Profiles
+
+Primary config source:
+- `RECIPIENT_PROFILES_JSON`
+
+Local fallback:
+- `recipient_profiles.local.json`
+
+Bundled example:
+- [examples/recipient_profiles.example.json](examples/recipient_profiles.example.json)
+
+Example shape:
+
+```json
+[
+  {
+    "id": "george",
+    "email": "you@example.com",
+    "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
+    "min_top_score": 0.45,
+    "care_about_sponsorship": false,
+    "use_sponsor_lookup": false
+  },
+  {
+    "id": "elisabeth",
+    "email": "other@example.com",
+    "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
+    "min_top_score": 0.45,
+    "care_about_sponsorship": true,
+    "use_sponsor_lookup": true
+  }
+]
+```
+
+Supported recipient fields:
+- `id`
+- `email`
+- `semantic_profiles`
+- `semantic_profile_texts`
+- `min_top_score`
+- `care_about_sponsorship`
+- `use_sponsor_lookup`
+
+`semantic_profiles` selects which embedding profiles are active for that recipient.
+`semantic_profile_texts` can override or add profile text by id.
+
+Built-in semantic profile ids:
+- `swe`
+- `data_science`
+- `ai_ml_engineer`
+
+## Sponsorship Lookup
+
+Optional lookup source:
+- `SPONSOR_COMPANIES_CSV`
+
+Local fallback:
+- `sponsor_companies.local.csv`
+
+Bundled example:
+- [examples/sponsor_companies.example.csv](examples/sponsor_companies.example.csv)
+
+Expected CSV schema:
+
+```csv
+company_name
+Example Sponsor Ltd
+Example Sponsor Plc
+```
+
+The lookup is metadata only. It is not a job source.
+If enabled for a recipient profile:
+- sponsor-licensed employers get a small positive prior
+- `explicit_no` sponsorship wording still wins and blocks the role
+
+Sponsorship classification is rule-based, not embedding-based:
+- `explicit_yes`
+- `explicit_no`
+- `implied_no`
+- `unknown`
 
 ## Target Configuration
 
@@ -61,7 +146,7 @@ Each value can be:
 
 The bundled example files contain UK-focused starter targets.
 
-### Target Management CLI
+## Target Management CLI
 
 You can manage database-backed targets without editing SQL directly:
 
@@ -79,14 +164,19 @@ python manage_targets.py disable ashby multiverse
 - `JOB_SCRAPER_APP_PASSWORD`
 - `DATABASE_URL`
 
+### Recommended GitHub Secrets
+
+- `RECIPIENT_PROFILES_JSON`
+
 ### Optional GitHub Variables
 
 - `ASHBY_COMPANIES_JSON`
 - `GREENHOUSE_BOARD_TOKENS_JSON`
 - `LEVER_COMPANIES_JSON`
 - `NEXTJS_URLS_JSON`
+- `SPONSOR_COMPANIES_CSV`
 
-If you do not set the optional variables, the workflow seeds from the bundled example files.
+If you do not set the optional target variables, the workflow seeds from the bundled example files.
 
 ### Free Postgres Setup
 
@@ -97,24 +187,20 @@ A free Postgres provider like Supabase works well:
 3. Save it as the `DATABASE_URL` GitHub secret.
 4. Run the workflow manually once.
 
-The app creates the tables automatically on first run.
-
-## Greenhouse Notes
-
-Greenhouse support uses the public Job Board API. You still need a board token or board URL per company. There is no supported API to enumerate every Greenhouse company globally.
-
-Examples:
-- `koboldmetals`
-- `https://job-boards.greenhouse.io/hudl`
+The app creates its tables automatically on first run.
 
 ## Database Tables
 
 `scrape_targets`
 - stores target values per source
-- allows future manual enable/disable control
+- allows manual enable/disable control
+
+`recipient_seen_jobs`
+- stores seen job URLs per recipient profile
 
 `seen_jobs`
-- stores job URLs that have already triggered notifications
+- older shared seen-job table
+- still read as legacy seed data for existing setups
 
 ## Responsible Use
 
