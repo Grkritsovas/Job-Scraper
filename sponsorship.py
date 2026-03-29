@@ -154,13 +154,21 @@ def resolve_sponsor_company_metadata(normalized_company, sponsor_company_lookup)
     if exact_match:
         return exact_match
 
-    if len(normalized_company) < 6:
+    if len(normalized_company) < 4:
         return {}
 
     prefix = normalized_company + " "
-    for sponsor_company_name, sponsor_metadata in sponsor_company_lookup.items():
-        if sponsor_company_name.startswith(prefix):
-            return sponsor_metadata
+    candidate_matches = [
+        sponsor_metadata
+        for sponsor_company_name, sponsor_metadata in sponsor_company_lookup.items()
+        if sponsor_company_name.startswith(prefix)
+    ]
+
+    if len(normalized_company) >= 6 and candidate_matches:
+        return candidate_matches[0]
+
+    if len(candidate_matches) <= 3:
+        return candidate_matches[0] if candidate_matches else {}
 
     return {}
 

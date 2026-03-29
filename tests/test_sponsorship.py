@@ -87,6 +87,44 @@ class SponsorshipTests(unittest.TestCase):
         metadata = resolve_sponsor_company_metadata("palantir", lookup)
 
         self.assertEqual("Palantir Technologies UK", metadata["company_name"])
+
+    def test_resolve_sponsor_company_metadata_allows_short_brand_when_candidates_are_few(self):
+        lookup = {
+            "dept personalised content": {
+                "company_name": "dept personalised content",
+                "town": "",
+                "industry": "",
+                "main_tier": "",
+                "sub_tier": "",
+            },
+            "dept uk holding": {
+                "company_name": "dept uk holding",
+                "town": "",
+                "industry": "",
+                "main_tier": "",
+                "sub_tier": "",
+            },
+        }
+
+        metadata = resolve_sponsor_company_metadata("dept", lookup)
+
+        self.assertTrue(metadata)
+
+    def test_resolve_sponsor_company_metadata_blocks_short_ambiguous_brand(self):
+        lookup = {
+            f"ion candidate {index}": {
+                "company_name": f"ion candidate {index}",
+                "town": "",
+                "industry": "",
+                "main_tier": "",
+                "sub_tier": "",
+            }
+            for index in range(6)
+        }
+
+        metadata = resolve_sponsor_company_metadata("ion", lookup)
+
+        self.assertEqual({}, metadata)
         self.assertEqual(
             "explicit_yes",
             classify_sponsorship_status(

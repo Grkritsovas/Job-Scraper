@@ -13,6 +13,14 @@ from target_config import load_configured_targets
 from utils import build_digest_bodies
 
 
+def sponsor_aware_profiles(recipient_profiles):
+    return any(
+        profile.get("care_about_sponsorship", False)
+        or profile.get("use_sponsor_lookup", False)
+        for profile in recipient_profiles
+    )
+
+
 def collect_all_jobs(storage):
     seen_urls = set()
     candidates = []
@@ -60,6 +68,11 @@ def main():
     initialize_storage(storage)
     recipient_profiles = load_recipient_profiles()
     sponsor_company_lookup = load_sponsor_company_lookup()
+    if sponsor_aware_profiles(recipient_profiles) and not sponsor_company_lookup:
+        print(
+            "Warning: sponsorship-aware recipient profiles are enabled, but no sponsor "
+            "company lookup data was loaded."
+        )
 
     candidates = collect_all_jobs(storage)
     enriched_candidates = enrich_jobs(candidates, sponsor_company_lookup)
