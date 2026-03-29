@@ -82,19 +82,28 @@ Example shape:
       "Senior or staff level role requiring multiple years of industry experience, technical leadership, mentoring, architecture ownership, and proven delivery of production systems at scale."
     ],
     "seniority_penalty_weight": 0.18,
+    "preferred_salary_max_gbp": 45000,
+    "salary_hard_cap_gbp": 70000,
+    "salary_penalty_max": 0.35,
     "care_about_sponsorship": false,
     "use_sponsor_lookup": false
   },
   {
-    "id": "elisabeth",
+    "id": "kamila",
     "email": "other@example.com",
-    "semantic_profiles": ["marketing_assistant"],
+    "semantic_profiles": ["marketing_assistant", "ai_ml"],
     "semantic_profile_texts": {
-      "marketing_assistant": "Early-career marketing assistant profile. Best aligned with junior marketing, campaign support, content operations, and brand coordination roles where communication, organization, and execution matter more than senior ownership."
+      "marketing_assistant": "Junior marketing and communications professional with experience supporting marketing teams in structured business environments. Best aligned with early-career marketing assistant, communications support, campaign operations, coordination, and content-support roles.",
+      "ai_ml": "Early-career AI and data-focused graduate profile. Best aligned with junior applied AI, machine learning, and analytical support roles where experimentation, modelling fundamentals, and practical Python-based ML work matter more than production ownership."
     },
     "min_top_score": 0.45,
-    "negative_profile_texts": [],
-    "seniority_penalty_weight": 0.10,
+    "negative_profile_texts": [
+      "Senior or highly autonomous role requiring proven commercial experience, independent ownership, strategic responsibility, or delivery in real production or business environments. Includes roles expecting multiple years of experience, leadership, mentoring, end-to-end ownership, operational accountability, or advanced specialization."
+    ],
+    "seniority_penalty_weight": 0.18,
+    "preferred_salary_max_gbp": 45000,
+    "salary_hard_cap_gbp": 70000,
+    "salary_penalty_max": 0.35,
     "care_about_sponsorship": true,
     "use_sponsor_lookup": true
   }
@@ -116,6 +125,9 @@ Supported recipient fields:
 - `min_top_score`
 - `negative_profile_texts`
 - `seniority_penalty_weight`
+- `preferred_salary_max_gbp`
+- `salary_hard_cap_gbp`
+- `salary_penalty_max`
 - `care_about_sponsorship`
 - `use_sponsor_lookup`
 
@@ -123,6 +135,9 @@ Supported recipient fields:
 `semantic_profile_texts` can override or add profile text by id.
 `negative_profile_texts` is optional extra text describing roles you want pushed down.
 `seniority_penalty_weight` controls how strongly those negative profiles affect ranking.
+`preferred_salary_max_gbp` is where salary mismatch penalty begins.
+`salary_hard_cap_gbp` is where that penalty reaches its maximum.
+`salary_penalty_max` controls how much score can be deducted for salary mismatch.
 
 If you use a custom semantic profile id such as `marketing_assistant` and do not provide
 `semantic_profile_texts`, the app now falls back to a simple generated profile text so the run
