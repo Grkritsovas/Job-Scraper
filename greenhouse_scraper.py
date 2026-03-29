@@ -1,5 +1,5 @@
 import html
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
@@ -23,6 +23,11 @@ def normalize_board_token(value):
         return cleaned.strip("/").split("/")[-1]
 
     parsed = urlparse(cleaned)
+    query_params = parse_qs(parsed.query)
+    board_token = (query_params.get("for") or [""])[0].strip()
+    if board_token:
+        return board_token
+
     path_parts = [part for part in parsed.path.split("/") if part]
     if not path_parts:
         return ""
