@@ -30,6 +30,88 @@ EXPERIENCE_PATTERNS = [
     r"\b[2-9]\s*(?:years?|yrs?|yoe)\s+(?:of\s+)?experience\b",
     r"\b10\s*(?:years?|yrs?|yoe)\s+(?:of\s+)?experience\b",
 ]
+
+UK_LOCATION_TERMS = {
+    "aberdeen",
+    "bath",
+    "basingstoke",
+    "blackburn",
+    "blackpool",
+    "birmingham",
+    "bournemooth",
+    "bournemouth",
+    "bristol",
+    "cambridge",
+    "cardif",
+    "cardiff",
+    "cheltenham",
+    "coventry",
+    "crawley",
+    "crawly",
+    "darlington",
+    "devon",
+    "doncaster",
+    "dorchester",
+    "dumfries",
+    "edinburgh",
+    "edingburgh",
+    "exeter",
+    "falkirk",
+    "farnborough",
+    "farnham",
+    "galashiels",
+    "glasgow",
+    "guildford",
+    "harrow",
+    "hinckley",
+    "horsham",
+    "hull",
+    "inverness",
+    "isle of wight",
+    "kent",
+    "kilmarnock",
+    "kingston upon thames",
+    "lancashire",
+    "lancaster",
+    "leeds",
+    "leicester",
+    "london",
+    "maidstone",
+    "manchester",
+    "middlesborough",
+    "middlesbrough",
+    "newcastle",
+    "newport",
+    "oldham",
+    "oxford",
+    "oxfordshire",
+    "perth",
+    "plymouth",
+    "portsmouth",
+    "reading",
+    "redhill",
+    "scotland",
+    "sheffield",
+    "shefield",
+    "slough",
+    "somerset",
+    "southampton",
+    "stockport",
+    "stockton-on-tees",
+    "surrey",
+    "swindon",
+    "taunton",
+    "teesside",
+    "torquay",
+    "truro",
+    "warwick",
+    "west midlands",
+    "weybridge",
+    "woking",
+    "york",
+}
+
+
 def normalize_company_name(value):
     cleaned = value.replace(".com", "").replace(".io", "")
     cleaned = cleaned.replace("-", " ").replace(".", " ").strip()
@@ -111,21 +193,10 @@ def is_uk_location(locations):
     country_level_uk_patterns = [
         r"\buk\b",
         r"united kingdom",
+        r"\bgb\b",
         r"remote\s*\(uk\)",
         r"\bengland\b",
         r"\bscotland\b",
-    ]
-
-    city_level_uk_patterns = [
-        r"\blondon\b",
-        r"\boxford\b",
-        r"\bmanchester\b",
-        r"\bbristol\b",
-        r"\bcardiff\b",
-        r"\bedinburgh\b",
-        r"\bglasgow\b",
-        r"\bleeds\b",
-        r"\bbirmingham\b",
     ]
 
     foreign_keywords = [
@@ -170,7 +241,7 @@ def is_uk_location(locations):
         if any(keyword in normalized for keyword in foreign_keywords):
             continue
 
-        if any(re.search(pattern, normalized) for pattern in city_level_uk_patterns):
+        if any(location_term in normalized for location_term in UK_LOCATION_TERMS):
             return True
 
     return False
@@ -199,6 +270,8 @@ def is_engineering_role(title, description):
     ]
 
     return any(keyword in text for keyword in engineering_keywords)
+
+
 def dedupe_keep_order(values):
     return list(dict.fromkeys(value for value in values if value))
 
