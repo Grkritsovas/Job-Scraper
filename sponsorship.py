@@ -6,7 +6,10 @@ from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_SPONSOR_CSV = BASE_DIR / "sponsor_companies.local.csv"
+DEFAULT_SPONSOR_CSV_PATHS = [
+    BASE_DIR / "sponsor_companies.local.csv",
+    BASE_DIR / "data" / "uk_sponsors_companies.csv",
+]
 
 COMPANY_SUFFIXES = {
     "co",
@@ -83,7 +86,11 @@ def _resolve_csv_path(csv_path=None):
             path = (BASE_DIR / configured).resolve()
         return path
 
-    return DEFAULT_SPONSOR_CSV
+    for fallback_path in DEFAULT_SPONSOR_CSV_PATHS:
+        if fallback_path.exists():
+            return fallback_path
+
+    return DEFAULT_SPONSOR_CSV_PATHS[0]
 
 
 def _extract_company_name(row):

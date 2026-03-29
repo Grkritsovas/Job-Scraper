@@ -65,6 +65,10 @@ class Storage:
         self._ensure_postgres_schema()
 
     def load_seen_urls(self, recipient_id):
+        seen_sets = self.load_seen_url_sets(recipient_id)
+        return seen_sets["recipient_seen_urls"] | seen_sets["legacy_seen_urls"]
+
+    def load_seen_url_sets(self, recipient_id):
         recipient_rows = self._fetch_all(
             self._sql(
                 """
@@ -80,8 +84,12 @@ class Storage:
             (),
         )
         return {
-            *(row["job_url"] for row in recipient_rows),
-            *(row["job_url"] for row in legacy_rows),
+            "recipient_seen_urls": {
+                row["job_url"] for row in recipient_rows if row.get("job_url")
+            },
+            "legacy_seen_urls": {
+                row["job_url"] for row in legacy_rows if row.get("job_url")
+            },
         }
 
     def store_seen_jobs(self, recipient_id, jobs):

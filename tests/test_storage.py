@@ -38,6 +38,62 @@ class StorageTests(unittest.TestCase):
         )
         self.assertEqual(set(), storage.load_seen_urls("elisabeth"))
 
+    def test_load_seen_url_sets_separates_recipient_and_legacy_rows(self):
+        db_path = (self.test_dir / "test.db").resolve()
+        storage = create_storage(f"sqlite:///{db_path}")
+        storage.ensure_schema()
+        storage.store_seen_jobs(
+            "george",
+            [
+                {
+                    "url": "https://example.com/job-1",
+                    "source": "ashby",
+                    "target_value": "example",
+                    "company": "Example",
+                    "title": "Software Engineer",
+                    "location": "London",
+                }
+            ],
+        )
+
+        connection = storage._connect_sqlite()
+        try:
+            connection.execute(
+                """
+                INSERT INTO seen_jobs (
+                    job_url,
+                    source_type,
+                    target_value,
+                    company_name,
+                    title,
+                    location
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "https://example.com/job-legacy",
+                    "greenhouse",
+                    "legacy",
+                    "Legacy Co",
+                    "Legacy Role",
+                    "London",
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        seen_sets = storage.load_seen_url_sets("george")
+
+        self.assertEqual(
+            {"https://example.com/job-1"},
+            seen_sets["recipient_seen_urls"],
+        )
+        self.assertEqual(
+            {"https://example.com/job-legacy"},
+            seen_sets["legacy_seen_urls"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

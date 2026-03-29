@@ -57,7 +57,10 @@ def collect_all_jobs(storage, diagnostics):
 
 
 def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostics):
-    seen_urls = storage.load_seen_urls(recipient_profile["id"])
+    seen_url_sets = storage.load_seen_url_sets(recipient_profile["id"])
+    seen_urls = (
+        seen_url_sets["recipient_seen_urls"] | seen_url_sets["legacy_seen_urls"]
+    )
     ranked_jobs, ranking_stats = rank_jobs(
         candidates,
         recipient_profile,
@@ -69,6 +72,8 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
         {
             **ranking_stats,
             "unseen_jobs": len(unseen_jobs),
+            "recipient_seen_urls": len(seen_url_sets["recipient_seen_urls"]),
+            "legacy_seen_urls": len(seen_url_sets["legacy_seen_urls"]),
         },
     )
     return unseen_jobs

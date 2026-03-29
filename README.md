@@ -161,11 +161,13 @@ Optional lookup source:
 
 Local fallback:
 - `sponsor_companies.local.csv`
+- `data/uk_sponsors_companies.csv`
 
 Bundled example:
 - [examples/sponsor_companies.example.csv](examples/sponsor_companies.example.csv)
 
 The sponsor lookup data can be derived from GOV.UK sponsor register data.
+If `data/uk_sponsors_companies.csv` exists in the repo, the app will load it automatically even if `SPONSOR_COMPANIES_CSV` is not set.
 
 Expected CSV schema:
 
