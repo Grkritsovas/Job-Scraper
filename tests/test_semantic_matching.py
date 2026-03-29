@@ -1,6 +1,6 @@
 import unittest
 
-from semantic_matching import rank_jobs
+from semantic_matching import build_profile_specs, rank_jobs
 
 
 class FakeMatcher:
@@ -50,6 +50,19 @@ def make_job(**overrides):
 
 
 class SemanticMatchingTests(unittest.TestCase):
+    def test_unknown_profile_id_falls_back_to_generated_profile_text(self):
+        recipient_profile = {
+            "semantic_profiles": ["marketing_assistant"],
+            "semantic_profile_texts": {},
+        }
+
+        specs = build_profile_specs(recipient_profile)
+
+        self.assertEqual(1, len(specs))
+        self.assertEqual("marketing_assistant", specs[0]["id"])
+        self.assertEqual("Marketing Assistant", specs[0]["label"])
+        self.assertIn("entry-level marketing assistant roles", specs[0]["text"])
+
     def test_recipient_with_sponsorship_concern_rejects_explicit_no(self):
         jobs = [
             make_job(

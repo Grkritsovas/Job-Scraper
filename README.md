@@ -76,6 +76,7 @@ Example shape:
     "id": "george",
     "email": "you@example.com",
     "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
+    "semantic_profile_texts": {},
     "min_top_score": 0.45,
     "negative_profile_texts": [
       "Senior or staff level role requiring multiple years of industry experience, technical leadership, mentoring, architecture ownership, and proven delivery of production systems at scale."
@@ -87,7 +88,10 @@ Example shape:
   {
     "id": "elisabeth",
     "email": "other@example.com",
-    "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
+    "semantic_profiles": ["marketing_assistant"],
+    "semantic_profile_texts": {
+      "marketing_assistant": "Early-career marketing assistant profile. Best aligned with junior marketing, campaign support, content operations, and brand coordination roles where communication, organization, and execution matter more than senior ownership."
+    },
     "min_top_score": 0.45,
     "negative_profile_texts": [],
     "seniority_penalty_weight": 0.10,
@@ -102,6 +106,7 @@ Minimum useful fields for an extra recipient:
 - `email`
 
 The other fields are preferences. If two recipients want the same role taste, you can keep the same semantic profiles and thresholds and only change `id` and `email`.
+If they do not want the same role taste, give them their own `semantic_profiles` and `semantic_profile_texts`.
 
 Supported recipient fields:
 - `id`
@@ -118,6 +123,15 @@ Supported recipient fields:
 `semantic_profile_texts` can override or add profile text by id.
 `negative_profile_texts` is optional extra text describing roles you want pushed down.
 `seniority_penalty_weight` controls how strongly those negative profiles affect ranking.
+
+If you use a custom semantic profile id such as `marketing_assistant` and do not provide
+`semantic_profile_texts`, the app now falls back to a simple generated profile text so the run
+does not fail. That is acceptable for a quick start, but custom text will usually rank better.
+
+For personalized recipients, the recommended setup is:
+- keep your own profile texts for your own recipient entry
+- add separate profile texts for the other recipient
+- do not rely on the same SWE / Data Science / AI-ML profile text unless that other person genuinely wants the same role targeting
 
 Built-in semantic profile ids:
 - `swe`

@@ -208,6 +208,20 @@ def format_locations(locations):
     return ", ".join(unique_locations)
 
 
+def format_company_heading(company, company_jobs, recipient_profile):
+    sponsorship_enabled = (
+        recipient_profile.get("care_about_sponsorship", False)
+        or recipient_profile.get("use_sponsor_lookup", False)
+    )
+    if not sponsorship_enabled:
+        return company
+
+    if any(job.get("is_sponsor_licensed_employer") for job in company_jobs):
+        return f"{company} [Sponsor-licensed]"
+
+    return company
+
+
 def build_digest_bodies(jobs, recipient_profile, max_jobs_per_email=20):
     if not jobs:
         return []
@@ -240,7 +254,7 @@ def build_digest_bodies(jobs, recipient_profile, max_jobs_per_email=20):
             ),
             reverse=True,
         )
-        lines = [company]
+        lines = [format_company_heading(company, company_jobs, recipient_profile)]
         for job in company_jobs:
             location = job.get("location", "")
             location_suffix = f" | {location}" if location else ""

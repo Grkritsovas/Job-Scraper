@@ -133,6 +133,16 @@ def _display_label(profile_id):
     return profile_id.replace("_", " ").title()
 
 
+def _fallback_profile_text(profile_id):
+    label = _display_label(profile_id)
+    label_lower = label.lower()
+    return (
+        f"Early-career {label_lower} profile. Best aligned with junior and "
+        f"entry-level {label_lower} roles. Focus on responsibilities, tooling, "
+        f"and day-to-day work that match {label_lower} positions."
+    )
+
+
 def build_profile_specs(recipient_profile):
     configured_ids = recipient_profile.get("semantic_profiles") or get_default_semantic_profile_ids()
     custom_texts = {
@@ -155,7 +165,14 @@ def build_profile_specs(recipient_profile):
             continue
 
         if profile_id not in SEMANTIC_PROFILE_LIBRARY:
-            raise RuntimeError(f"Unknown semantic profile: {raw_profile_id}")
+            specs.append(
+                {
+                    "id": profile_id,
+                    "label": _display_label(profile_id),
+                    "text": _fallback_profile_text(profile_id),
+                }
+            )
+            continue
 
         profile_entry = SEMANTIC_PROFILE_LIBRARY[profile_id]
         specs.append(

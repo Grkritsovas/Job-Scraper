@@ -7,6 +7,7 @@
       "data_science",
       "ai_ml_engineer"
     ],
+    "semantic_profile_texts": {},
     "min_top_score": 0.45,
     "negative_profile_texts": [
       "Senior or staff level role requiring multiple years of industry experience, technical leadership, mentoring, architecture ownership, and proven delivery of production systems at scale."
