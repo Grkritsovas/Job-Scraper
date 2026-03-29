@@ -29,6 +29,9 @@ def _default_profile():
             "seniority_penalty_weight": float(
                 os.getenv("JOB_SCRAPER_SENIORITY_PENALTY_WEIGHT", "0.18")
             ),
+            "preferred_salary_max_gbp": None,
+            "salary_hard_cap_gbp": None,
+            "salary_penalty_max": 0.35,
             "care_about_sponsorship": False,
             "use_sponsor_lookup": False,
         }
@@ -56,6 +59,17 @@ def _normalize_profile(profile, index):
                 os.getenv("JOB_SCRAPER_SENIORITY_PENALTY_WEIGHT", "0.18"),
             )
         ),
+        "preferred_salary_max_gbp": (
+            float(profile["preferred_salary_max_gbp"])
+            if profile.get("preferred_salary_max_gbp") is not None
+            else None
+        ),
+        "salary_hard_cap_gbp": (
+            float(profile["salary_hard_cap_gbp"])
+            if profile.get("salary_hard_cap_gbp") is not None
+            else None
+        ),
+        "salary_penalty_max": float(profile.get("salary_penalty_max", 0.35)),
         "care_about_sponsorship": bool(profile.get("care_about_sponsorship", False)),
         "use_sponsor_lookup": bool(profile.get("use_sponsor_lookup", False)),
     }

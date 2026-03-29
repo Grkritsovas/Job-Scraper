@@ -21,6 +21,7 @@ class LocationFilteringTests(unittest.TestCase):
         self.assertFalse(is_uk_location(["Berlin"]))
         self.assertFalse(is_uk_location(["Sydney, Australia"]))
         self.assertFalse(is_uk_location(["Remote (United States)"]))
+        self.assertFalse(is_uk_location(["New York, NY"]))
 
 
 if __name__ == "__main__":

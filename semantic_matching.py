@@ -23,6 +23,20 @@ DEFAULT_SENIORITY_PENALTY_WEIGHT = float(
 SPONSOR_EXPLICIT_YES_BOOST = 0.03
 SPONSOR_LOOKUP_BOOST = 0.02
 SPONSOR_IMPLIED_NO_PENALTY = 0.08
+DEFAULT_SALARY_PENALTY_MAX = 0.35
+
+SALARY_RANGE_PATTERNS = [
+    re.compile(
+        r"(?:£|gbp\s*)\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k)?"
+        r"\s*(?:-|to|–|—)\s*(?:£|gbp\s*)?\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k)?",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:salary|compensation|pay)\D{0,20}(?:£|gbp\s*)\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k)?",
+        flags=re.IGNORECASE,
+    ),
+]
+SALARY_RATE_MARKERS = ("hour", "day", "daily", "week", "monthly")
 
 SEMANTIC_PROFILE_LIBRARY = {
     "swe": {
@@ -396,6 +410,72 @@ def apply_sponsorship_adjustments(job, score_data, recipient_profile):
     return ranking_score
 
 
+def _parse_salary_amount(amount_text, has_k_suffix):
+    numeric_value = float(amount_text.replace(",", ""))
+    if has_k_suffix:
+        numeric_value *= 1000
+    return numeric_value
+
+
+def extract_salary_upper_bound_gbp(text):
+    normalized_text = text or ""
+    upper_bounds = []
+
+    for pattern in SALARY_RANGE_PATTERNS:
+        for match in pattern.finditer(normalized_text):
+            trailing_context = normalized_text[match.end() : match.end() + 20].lower()
+            if any(marker in trailing_context for marker in SALARY_RATE_MARKERS):
+                continue
+
+            groups = match.groups()
+            if len(groups) >= 4 and groups[2]:
+                upper_bounds.append(_parse_salary_amount(groups[2], groups[3]))
+                continue
+
+            upper_bounds.append(_parse_salary_amount(groups[0], groups[1]))
+
+    if not upper_bounds:
+        return None
+
+    return max(upper_bounds)
+
+
+def apply_salary_penalty(job, ranking_score, recipient_profile):
+    preferred_salary_max = recipient_profile.get("preferred_salary_max_gbp")
+    if preferred_salary_max is None:
+        return ranking_score, None, 0.0
+
+    salary_upper_bound = extract_salary_upper_bound_gbp(
+        f"{job.get('title', '')}\n{job.get('description', '')}"
+    )
+    if salary_upper_bound is None:
+        return ranking_score, None, 0.0
+
+    salary_hard_cap = recipient_profile.get("salary_hard_cap_gbp")
+    if salary_hard_cap is None:
+        salary_hard_cap = preferred_salary_max + 5000
+
+    penalty_max = float(
+        recipient_profile.get("salary_penalty_max", DEFAULT_SALARY_PENALTY_MAX)
+    )
+
+    if salary_upper_bound <= preferred_salary_max:
+        return ranking_score, salary_upper_bound, 0.0
+
+    if salary_hard_cap <= preferred_salary_max:
+        salary_hard_cap = preferred_salary_max + 1
+
+    if salary_upper_bound >= salary_hard_cap:
+        penalty = penalty_max
+    else:
+        penalty = penalty_max * (
+            (salary_upper_bound - preferred_salary_max)
+            / (salary_hard_cap - preferred_salary_max)
+        )
+
+    return ranking_score - penalty, salary_upper_bound, penalty
+
+
 def rank_jobs(jobs, recipient_profile, matcher=None):
     matcher = matcher or get_profile_matcher()
     profile_specs = build_profile_specs(recipient_profile)
@@ -420,7 +500,15 @@ def rank_jobs(jobs, recipient_profile, matcher=None):
         score_data["seniority_penalty_applied"] = seniority_penalty_applied
         score_data["ranking_score"] = ranking_score
         ranking_score = apply_sponsorship_adjustments(job, score_data, recipient_profile)
-        if ranking_score is None or ranking_score < min_top_score:
+        if ranking_score is None:
+            continue
+
+        ranking_score, salary_upper_bound, salary_penalty_applied = apply_salary_penalty(
+            job,
+            ranking_score,
+            recipient_profile,
+        )
+        if ranking_score < min_top_score:
             continue
 
         ranked_jobs.append(
@@ -428,6 +516,8 @@ def rank_jobs(jobs, recipient_profile, matcher=None):
                 **job,
                 **score_data,
                 "ranking_score": ranking_score,
+                "salary_upper_bound_gbp": salary_upper_bound,
+                "salary_penalty_applied": salary_penalty_applied,
             }
         )
 

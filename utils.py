@@ -207,6 +207,7 @@ def is_uk_location(locations):
         "ukraine",
         "brazil",
         "mexico",
+        "new york",
         "serbia",
         "germany",
         "romania",
@@ -241,10 +242,15 @@ def is_uk_location(locations):
         if any(keyword in normalized for keyword in foreign_keywords):
             continue
 
-        if any(location_term in normalized for location_term in UK_LOCATION_TERMS):
+        if any(_contains_location_term(normalized, location_term) for location_term in UK_LOCATION_TERMS):
             return True
 
     return False
+
+
+def _contains_location_term(location_text, location_term):
+    pattern = r"(?<![a-z])" + re.escape(location_term).replace(r"\ ", r"\s+") + r"(?![a-z])"
+    return re.search(pattern, location_text) is not None
 
 
 def passes_experience_filter(description):

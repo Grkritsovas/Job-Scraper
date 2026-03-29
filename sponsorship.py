@@ -146,6 +146,25 @@ def load_sponsor_company_lookup(csv_path=None):
     return company_lookup
 
 
+def resolve_sponsor_company_metadata(normalized_company, sponsor_company_lookup):
+    if not normalized_company:
+        return {}
+
+    exact_match = sponsor_company_lookup.get(normalized_company)
+    if exact_match:
+        return exact_match
+
+    if len(normalized_company) < 6:
+        return {}
+
+    prefix = normalized_company + " "
+    for sponsor_company_name, sponsor_metadata in sponsor_company_lookup.items():
+        if sponsor_company_name.startswith(prefix):
+            return sponsor_metadata
+
+    return {}
+
+
 def classify_sponsorship_status(title, description):
     combined_text = f"{title} {description}".lower()
 
@@ -166,7 +185,10 @@ def enrich_jobs(jobs, sponsor_company_lookup):
 
     for job in jobs:
         normalized_company = normalize_company_lookup_name(job.get("company", ""))
-        sponsor_metadata = sponsor_company_lookup.get(normalized_company, {})
+        sponsor_metadata = resolve_sponsor_company_metadata(
+            normalized_company,
+            sponsor_company_lookup,
+        )
         enriched_jobs.append(
             {
                 **job,

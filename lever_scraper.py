@@ -78,6 +78,19 @@ def get_job_locations(job):
     return locations
 
 
+def get_primary_location(job):
+    categories = job.get("categories") or {}
+    return (categories.get("location") or "").strip()
+
+
+def is_flexible_location(value):
+    normalized = (value or "").lower()
+    return any(
+        marker in normalized
+        for marker in ["remote", "hybrid", "multiple", "various", "nationwide"]
+    )
+
+
 def get_job_url(job, site):
     return sanitize_job_url(
         job.get("hostedUrl")
@@ -101,8 +114,12 @@ def collect_site_jobs(site, seen_urls):
         title = job.get("text", "")
         url = get_job_url(job, site)
         locations = get_job_locations(job)
+        primary_location = get_primary_location(job)
 
-        if not is_uk_location(locations):
+        if primary_location and not is_flexible_location(primary_location):
+            if not is_uk_location([primary_location]):
+                continue
+        elif not is_uk_location(locations):
             continue
 
         if not url or url in seen_urls:

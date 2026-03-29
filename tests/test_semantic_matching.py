@@ -150,6 +150,43 @@ class SemanticMatchingTests(unittest.TestCase):
         ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
         self.assertEqual(1, len(ranked_jobs))
 
+    def test_salary_penalty_filters_unrealistic_salary_range(self):
+        jobs = [
+            make_job(
+                url="https://example.com/high-salary",
+                description="Salary range: £51,000 - £80,000 plus benefits.",
+            )
+        ]
+        recipient_profile = {
+            "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
+            "min_top_score": 0.45,
+            "preferred_salary_max_gbp": 45000,
+            "salary_hard_cap_gbp": 50000,
+            "salary_penalty_max": 0.35,
+            "care_about_sponsorship": False,
+            "use_sponsor_lookup": False,
+        }
+
+        ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
+        self.assertEqual([], ranked_jobs)
+
+    def test_salary_penalty_does_not_apply_when_not_configured(self):
+        jobs = [
+            make_job(
+                url="https://example.com/high-salary-allowed",
+                description="Salary range: £51,000 - £80,000 plus benefits.",
+            )
+        ]
+        recipient_profile = {
+            "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
+            "min_top_score": 0.45,
+            "care_about_sponsorship": False,
+            "use_sponsor_lookup": False,
+        }
+
+        ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
+        self.assertEqual(1, len(ranked_jobs))
+
 
 if __name__ == "__main__":
     unittest.main()

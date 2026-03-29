@@ -16,6 +16,9 @@ class RecipientProfilesTests(unittest.TestCase):
                 "min_top_score": 0.51,
                 "negative_profile_texts": ["senior role"],
                 "seniority_penalty_weight": 0.25,
+                "preferred_salary_max_gbp": 45000,
+                "salary_hard_cap_gbp": 50000,
+                "salary_penalty_max": 0.35,
                 "care_about_sponsorship": True,
                 "use_sponsor_lookup": True,
             }
@@ -35,6 +38,9 @@ class RecipientProfilesTests(unittest.TestCase):
         self.assertEqual(0.51, profiles[0]["min_top_score"])
         self.assertEqual(["senior role"], profiles[0]["negative_profile_texts"])
         self.assertEqual(0.25, profiles[0]["seniority_penalty_weight"])
+        self.assertEqual(45000.0, profiles[0]["preferred_salary_max_gbp"])
+        self.assertEqual(50000.0, profiles[0]["salary_hard_cap_gbp"])
+        self.assertEqual(0.35, profiles[0]["salary_penalty_max"])
         self.assertTrue(profiles[0]["care_about_sponsorship"])
         self.assertTrue(profiles[0]["use_sponsor_lookup"])
 

@@ -6,6 +6,7 @@ from sponsorship import (
     enrich_jobs,
     load_sponsor_company_lookup,
     normalize_company_lookup_name,
+    resolve_sponsor_company_metadata,
 )
 
 
@@ -71,6 +72,21 @@ class SponsorshipTests(unittest.TestCase):
                 "Candidates must already have the right to work in the UK.",
             ),
         )
+
+    def test_resolve_sponsor_company_metadata_matches_prefix_alias(self):
+        lookup = {
+            "palantir technologies uk": {
+                "company_name": "Palantir Technologies UK",
+                "town": "",
+                "industry": "",
+                "main_tier": "",
+                "sub_tier": "",
+            }
+        }
+
+        metadata = resolve_sponsor_company_metadata("palantir", lookup)
+
+        self.assertEqual("Palantir Technologies UK", metadata["company_name"])
         self.assertEqual(
             "explicit_yes",
             classify_sponsorship_status(
