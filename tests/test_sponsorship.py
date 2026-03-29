@@ -28,6 +28,12 @@ class SponsorshipTests(unittest.TestCase):
             "funding circle",
             normalize_company_lookup_name("Funding Circle Plc"),
         )
+        self.assertEqual(
+            "11 hospitality",
+            normalize_company_lookup_name(
+                "11 Hospitality Limited t/a Holiday Inn Birmingham Airport NEC"
+            ),
+        )
 
     def test_load_lookup_and_match_company(self):
         csv_path = self.test_dir / "sponsors.csv"

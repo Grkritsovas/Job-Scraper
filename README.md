@@ -150,11 +150,13 @@ Local fallback:
 Bundled example:
 - [examples/sponsor_companies.example.csv](examples/sponsor_companies.example.csv)
 
+The sponsor lookup data can be derived from GOV.UK sponsor register data.
+
 Expected CSV schema:
 
 ```csv
-Organisation,Town,Industry,Main Tier,Sub Tier,Date Added,Status
-Example Sponsor Ltd,London,Computer,Worker (A),Skilled Worker,2026-01-01,Active
+company_name
+example sponsor
 ```
 
 Only the company column is required.
@@ -253,12 +255,20 @@ The app creates its tables automatically on first run.
 
 For sponsorship CSV:
 
+Small CSV:
+
 1. Open the CSV in a text editor
 2. Copy the full CSV contents including the header row
 3. Create a GitHub secret named `SPONSOR_COMPANIES_CSV_TEXT`
 4. Paste the CSV text
 
-This is usually easier than managing file paths in GitHub Actions.
+Large CSV:
+
+1. Commit the reduced CSV into the repo, for example `data/uk_sponsors_companies.csv`
+2. Create a GitHub Actions variable named `SPONSOR_COMPANIES_CSV`
+3. Set its value to `data/uk_sponsors_companies.csv`
+
+For larger sponsor lists, the repo file path is the better option.
 
 Typical shared setup:
 

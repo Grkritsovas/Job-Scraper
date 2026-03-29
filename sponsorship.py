@@ -60,6 +60,7 @@ IMPLIED_NO_PATTERNS = [
 def normalize_company_lookup_name(value):
     normalized = (value or "").lower().strip()
     normalized = normalized.replace("&", " and ")
+    normalized = re.sub(r"\b(?:trading\s+as|t\s*/?\s*a)\b.*$", "", normalized)
     normalized = re.sub(r"[^\w\s]", " ", normalized)
     normalized = re.sub(r"\s+", " ", normalized).strip()
 
