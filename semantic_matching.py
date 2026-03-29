@@ -476,16 +476,24 @@ def apply_salary_penalty(job, ranking_score, recipient_profile):
     return ranking_score - penalty, salary_upper_bound, penalty
 
 
-def rank_jobs(jobs, recipient_profile, matcher=None):
+def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
     matcher = matcher or get_profile_matcher()
     profile_specs = build_profile_specs(recipient_profile)
     min_top_score = float(
         recipient_profile.get("min_top_score", DEFAULT_MIN_PROFILE_SCORE)
     )
     ranked_jobs = []
+    stats = {
+        "input_jobs": len(jobs),
+        "hard_filtered_jobs": 0,
+        "sponsorship_rejected_jobs": 0,
+        "below_threshold_jobs": 0,
+        "ranked_jobs": 0,
+    }
 
     for job in jobs:
         if not passes_hard_filters(job):
+            stats["hard_filtered_jobs"] += 1
             continue
 
         score_data = matcher.score_description(
@@ -501,6 +509,7 @@ def rank_jobs(jobs, recipient_profile, matcher=None):
         score_data["ranking_score"] = ranking_score
         ranking_score = apply_sponsorship_adjustments(job, score_data, recipient_profile)
         if ranking_score is None:
+            stats["sponsorship_rejected_jobs"] += 1
             continue
 
         ranking_score, salary_upper_bound, salary_penalty_applied = apply_salary_penalty(
@@ -509,6 +518,7 @@ def rank_jobs(jobs, recipient_profile, matcher=None):
             recipient_profile,
         )
         if ranking_score < min_top_score:
+            stats["below_threshold_jobs"] += 1
             continue
 
         ranked_jobs.append(
@@ -520,6 +530,7 @@ def rank_jobs(jobs, recipient_profile, matcher=None):
                 "salary_penalty_applied": salary_penalty_applied,
             }
         )
+        stats["ranked_jobs"] += 1
 
     ranked_jobs.sort(
         key=lambda job: (
@@ -531,4 +542,6 @@ def rank_jobs(jobs, recipient_profile, matcher=None):
         ),
         reverse=True,
     )
+    if return_stats:
+        return ranked_jobs, stats
     return ranked_jobs

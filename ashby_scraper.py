@@ -4,7 +4,7 @@ from job_urls import sanitize_job_url
 from target_config import load_ashby_targets
 from utils import (
     HEADERS,
-    fetch_job_description,
+    fetch_job_description_details,
     format_locations,
     is_uk_location,
     normalize_company_name,
@@ -71,10 +71,21 @@ def get_job_locations(job):
     return [job.get("locationName", ""), *secondary_locations]
 
 
-def collect_company_jobs(company, seen_urls):
+def collect_company_jobs(company, seen_urls, diagnostics=None):
     jobs = fetch_ashby_jobs(company)
     matches = []
     company_name = normalize_company_name(company)
+    counts = {
+        "fetched_jobs": len(jobs),
+        "uk_jobs": 0,
+        "url_ok_jobs": 0,
+        "new_jobs": 0,
+        "description_ok_jobs": 0,
+        "html_like_descriptions": 0,
+        "usable_jobs": 0,
+        "reason": "no_jobs",
+        "sample_title": "",
+    }
 
     for job in jobs:
         title = job.get("title", "")
@@ -92,13 +103,23 @@ def collect_company_jobs(company, seen_urls):
         locations = get_job_locations(job)
         if not is_uk_location(locations):
             continue
+        counts["uk_jobs"] += 1
 
-        if not url or url in seen_urls:
+        if not url:
             continue
+        counts["url_ok_jobs"] += 1
 
-        description = fetch_job_description(url)
+        if url in seen_urls:
+            continue
+        counts["new_jobs"] += 1
+
+        description_info = fetch_job_description_details(url)
+        description = description_info["description"]
         if not description:
             continue
+        counts["description_ok_jobs"] += 1
+        if description_info["looks_like_html"]:
+            counts["html_like_descriptions"] += 1
 
         matches.append(
             {
@@ -110,15 +131,36 @@ def collect_company_jobs(company, seen_urls):
                 "location": format_locations(locations),
                 "source": "ashby",
                 "target_value": company,
+                "description_status": description_info["status"],
+                "description_looks_like_html": description_info["looks_like_html"],
             }
         )
         seen_urls.add(url)
+        counts["usable_jobs"] += 1
+        if not counts["sample_title"]:
+            counts["sample_title"] = title.strip()
+
+    if counts["fetched_jobs"] and not counts["uk_jobs"]:
+        counts["reason"] = "no_uk_jobs"
+    elif counts["uk_jobs"] and not counts["url_ok_jobs"]:
+        counts["reason"] = "no_valid_urls"
+    elif counts["url_ok_jobs"] and not counts["new_jobs"]:
+        counts["reason"] = "already_seen_or_duplicate"
+    elif counts["new_jobs"] and not counts["description_ok_jobs"]:
+        counts["reason"] = "description_fetch_failed"
+    elif counts["description_ok_jobs"] and not counts["usable_jobs"]:
+        counts["reason"] = "no_usable_jobs"
+    elif counts["usable_jobs"]:
+        counts["reason"] = "ok"
+
+    if diagnostics is not None:
+        diagnostics.record_target_summary("ashby", company, counts)
 
     return matches
 
 
-def collect_jobs(seen_urls, companies=None):
+def collect_jobs(seen_urls, companies=None, diagnostics=None):
     matches = []
     for company in get_company_slugs(companies):
-        matches.extend(collect_company_jobs(company, seen_urls))
+        matches.extend(collect_company_jobs(company, seen_urls, diagnostics))
     return matches

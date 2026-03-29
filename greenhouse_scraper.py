@@ -76,15 +76,34 @@ def get_greenhouse_locations(job):
 def get_greenhouse_description(job):
     content = html.unescape(job.get("content", ""))
     if not content:
-        return ""
+        return {
+            "description": "",
+            "status": "missing_content",
+            "looks_like_html": False,
+        }
 
-    return get_visible_text(content)
+    return {
+        "description": get_visible_text(content),
+        "status": "job_content",
+        "looks_like_html": False,
+    }
 
 
-def collect_board_jobs(board_token, seen_urls):
+def collect_board_jobs(board_token, seen_urls, diagnostics=None):
     jobs = fetch_greenhouse_jobs(board_token)
     company_name = normalize_company_name(board_token)
     matches = []
+    counts = {
+        "fetched_jobs": len(jobs),
+        "uk_jobs": 0,
+        "url_ok_jobs": 0,
+        "new_jobs": 0,
+        "description_ok_jobs": 0,
+        "html_like_descriptions": 0,
+        "usable_jobs": 0,
+        "reason": "no_jobs",
+        "sample_title": "",
+    }
 
     for job in jobs:
         title = job.get("title", "")
@@ -98,13 +117,21 @@ def collect_board_jobs(board_token, seen_urls):
 
         if not is_uk_location(location_candidates):
             continue
+        counts["uk_jobs"] += 1
 
-        if not url or url in seen_urls:
+        if not url:
             continue
+        counts["url_ok_jobs"] += 1
 
-        description = get_greenhouse_description(job)
+        if url in seen_urls:
+            continue
+        counts["new_jobs"] += 1
+
+        description_info = get_greenhouse_description(job)
+        description = description_info["description"]
         if not description:
             continue
+        counts["description_ok_jobs"] += 1
 
         matches.append(
             {
@@ -116,15 +143,36 @@ def collect_board_jobs(board_token, seen_urls):
                 "location": format_locations(locations),
                 "source": "greenhouse",
                 "target_value": board_token,
+                "description_status": description_info["status"],
+                "description_looks_like_html": False,
             }
         )
         seen_urls.add(url)
+        counts["usable_jobs"] += 1
+        if not counts["sample_title"]:
+            counts["sample_title"] = title.strip()
+
+    if counts["fetched_jobs"] and not counts["uk_jobs"]:
+        counts["reason"] = "no_uk_jobs"
+    elif counts["uk_jobs"] and not counts["url_ok_jobs"]:
+        counts["reason"] = "no_valid_urls"
+    elif counts["url_ok_jobs"] and not counts["new_jobs"]:
+        counts["reason"] = "already_seen_or_duplicate"
+    elif counts["new_jobs"] and not counts["description_ok_jobs"]:
+        counts["reason"] = "description_fetch_failed"
+    elif counts["description_ok_jobs"] and not counts["usable_jobs"]:
+        counts["reason"] = "no_usable_jobs"
+    elif counts["usable_jobs"]:
+        counts["reason"] = "ok"
+
+    if diagnostics is not None:
+        diagnostics.record_target_summary("greenhouse", board_token, counts)
 
     return matches
 
 
-def collect_jobs(seen_urls, board_tokens=None):
+def collect_jobs(seen_urls, board_tokens=None, diagnostics=None):
     matches = []
     for board_token in load_board_tokens(board_tokens):
-        matches.extend(collect_board_jobs(board_token, seen_urls))
+        matches.extend(collect_board_jobs(board_token, seen_urls, diagnostics))
     return matches

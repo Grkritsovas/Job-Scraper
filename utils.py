@@ -156,23 +156,59 @@ def extract_ashby_description_text(html):
     return get_visible_text(description_html)
 
 
-def fetch_job_description(url):
+def description_looks_like_html(description):
+    if not description:
+        return False
+
+    lowered = description.lower()
+    if "<!doctype" in lowered or "<html" in lowered or "<body" in lowered:
+        return True
+
+    return bool(re.search(r"<[a-z!/][^>]*>", description, flags=re.IGNORECASE))
+
+
+def fetch_job_description_details(url):
     try:
         response = requests.get(url, headers=HEADERS, timeout=20)
         response.raise_for_status()
     except requests.RequestException:
-        return ""
+        return {
+            "description": "",
+            "status": "request_failed",
+            "looks_like_html": False,
+            "length": 0,
+        }
 
     if "jobs.ashbyhq.com" in url:
         ashby_description = extract_ashby_description_text(response.text)
         if len(ashby_description) >= MIN_VISIBLE_TEXT_LENGTH:
-            return ashby_description
+            return {
+                "description": ashby_description,
+                "status": "ashby_description_html",
+                "looks_like_html": False,
+                "length": len(ashby_description),
+            }
 
     visible_text = get_visible_text(response.text)
     if len(visible_text) >= MIN_VISIBLE_TEXT_LENGTH:
-        return visible_text
+        return {
+            "description": visible_text,
+            "status": "visible_text",
+            "looks_like_html": False,
+            "length": len(visible_text),
+        }
 
-    return response.text
+    looks_like_html = description_looks_like_html(response.text)
+    return {
+        "description": response.text,
+        "status": "raw_html_fallback" if looks_like_html else "raw_text_fallback",
+        "looks_like_html": looks_like_html,
+        "length": len(response.text),
+    }
+
+
+def fetch_job_description(url):
+    return fetch_job_description_details(url)["description"]
 
 
 def is_uk_location(locations):

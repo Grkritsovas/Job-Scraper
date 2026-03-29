@@ -7,7 +7,7 @@ from job_urls import normalize_seed_url, sanitize_job_url
 from target_config import load_nextjs_targets
 from utils import (
     HEADERS,
-    fetch_job_description,
+    fetch_job_description_details,
     format_locations,
     get_company_name_from_url,
     is_uk_location,
@@ -71,11 +71,30 @@ def get_job_locations(job):
     ]
 
 
-def collect_url_jobs(url, seen_urls):
-    data = fetch_nextjs_data(url)
-    jobs = extract_jobs(data)
+def collect_url_jobs(url, seen_urls, diagnostics=None):
+    counts = {
+        "fetched_jobs": 0,
+        "uk_jobs": 0,
+        "url_ok_jobs": 0,
+        "new_jobs": 0,
+        "description_ok_jobs": 0,
+        "html_like_descriptions": 0,
+        "usable_jobs": 0,
+        "reason": "no_jobs",
+        "sample_title": "",
+    }
     company_name = get_company_name_from_url(url)
     matches = []
+
+    try:
+        data = fetch_nextjs_data(url)
+        jobs = extract_jobs(data)
+        counts["fetched_jobs"] = len(jobs)
+    except Exception as exc:
+        counts["reason"] = f"fetch_failed:{exc.__class__.__name__}"
+        if diagnostics is not None:
+            diagnostics.record_target_summary("nextjs", url, counts)
+        return matches
 
     for job in jobs:
         title = job.get("title", "")
@@ -87,13 +106,23 @@ def collect_url_jobs(url, seen_urls):
         locations = get_job_locations(job)
         if any(locations) and not is_uk_location(locations):
             continue
+        counts["uk_jobs"] += 1
 
-        if not job_url or job_url in seen_urls:
+        if not job_url:
             continue
+        counts["url_ok_jobs"] += 1
 
-        description = fetch_job_description(job_url)
+        if job_url in seen_urls:
+            continue
+        counts["new_jobs"] += 1
+
+        description_info = fetch_job_description_details(job_url)
+        description = description_info["description"]
         if not description:
             continue
+        counts["description_ok_jobs"] += 1
+        if description_info["looks_like_html"]:
+            counts["html_like_descriptions"] += 1
 
         matches.append(
             {
@@ -105,15 +134,36 @@ def collect_url_jobs(url, seen_urls):
                 "location": format_locations(locations),
                 "source": "nextjs",
                 "target_value": url,
+                "description_status": description_info["status"],
+                "description_looks_like_html": description_info["looks_like_html"],
             }
         )
         seen_urls.add(job_url)
+        counts["usable_jobs"] += 1
+        if not counts["sample_title"]:
+            counts["sample_title"] = title.strip()
+
+    if counts["fetched_jobs"] and not counts["uk_jobs"]:
+        counts["reason"] = "no_uk_jobs"
+    elif counts["uk_jobs"] and not counts["url_ok_jobs"]:
+        counts["reason"] = "no_valid_urls"
+    elif counts["url_ok_jobs"] and not counts["new_jobs"]:
+        counts["reason"] = "already_seen_or_duplicate"
+    elif counts["new_jobs"] and not counts["description_ok_jobs"]:
+        counts["reason"] = "description_fetch_failed"
+    elif counts["description_ok_jobs"] and not counts["usable_jobs"]:
+        counts["reason"] = "no_usable_jobs"
+    elif counts["usable_jobs"]:
+        counts["reason"] = "ok"
+
+    if diagnostics is not None:
+        diagnostics.record_target_summary("nextjs", url, counts)
 
     return matches
 
 
-def collect_jobs(seen_urls, urls=None):
+def collect_jobs(seen_urls, urls=None, diagnostics=None):
     matches = []
     for url in load_urls(urls):
-        matches.extend(collect_url_jobs(url, seen_urls))
+        matches.extend(collect_url_jobs(url, seen_urls, diagnostics))
     return matches
