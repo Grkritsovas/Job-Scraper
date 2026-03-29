@@ -10,8 +10,6 @@ from storage import create_storage
 from target_config import load_configured_targets
 from utils import build_digest_bodies
 
-MAX_EMAIL_JOBS = 20
-
 
 def collect_all_jobs(seen_urls, storage):
     candidates = []
@@ -25,18 +23,14 @@ def collect_all_jobs(seen_urls, storage):
 
 
 def select_jobs_for_digest(candidates):
-    ranked_jobs = rank_jobs(candidates)
-    return ranked_jobs[:MAX_EMAIL_JOBS], ranked_jobs
+    return rank_jobs(candidates)
 
 
-def send_digest(jobs, total_ranked_jobs):
+def send_digest(jobs):
     bodies = build_digest_bodies(jobs)
-    total = len(jobs)
 
     for index, body in enumerate(bodies, start=1):
-        subject = f"Job digest: {total} new job matches"
-        if total_ranked_jobs > total:
-            subject = f"Job digest: top {total} of {total_ranked_jobs} new job matches"
+        subject = f"Job digest: {len(jobs)} new job matches"
         if len(bodies) > 1:
             subject += f" ({index}/{len(bodies)})"
         send_email(subject, body)
@@ -62,10 +56,10 @@ def main():
 
     seen_urls = storage.load_seen_urls()
     candidates = collect_all_jobs(seen_urls, storage)
-    selected_jobs, ranked_jobs = select_jobs_for_digest(candidates)
+    ranked_jobs = select_jobs_for_digest(candidates)
 
-    if selected_jobs:
-        send_digest(selected_jobs, len(ranked_jobs))
+    if ranked_jobs:
+        send_digest(ranked_jobs)
         storage.store_seen_jobs(ranked_jobs)
 
 

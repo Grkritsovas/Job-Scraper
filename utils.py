@@ -218,7 +218,10 @@ def build_digest_bodies(jobs, max_jobs_per_email=20):
     sorted_companies = sorted(
         jobs_by_company,
         key=lambda company: (
-            max(job.get("top_score", 0) for job in jobs_by_company[company]),
+            max(
+                job.get("adjusted_top_score", job.get("top_score", 0))
+                for job in jobs_by_company[company]
+            ),
             company.lower(),
         ),
         reverse=True,
@@ -227,6 +230,7 @@ def build_digest_bodies(jobs, max_jobs_per_email=20):
         company_jobs = sorted(
             jobs_by_company[company],
             key=lambda job: (
+                job.get("adjusted_top_score", job.get("top_score", 0)),
                 job.get("top_score", 0),
                 job.get("score_margin", 0),
                 job["title"].lower(),

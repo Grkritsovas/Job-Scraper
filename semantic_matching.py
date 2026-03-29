@@ -14,7 +14,11 @@ from utils import is_uk_location, passes_experience_filter
 EMBEDDING_MODEL_NAME = os.getenv(
     "JOB_SCRAPER_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
 )
-MIN_PROFILE_SCORE = float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.47"))
+MIN_PROFILE_SCORE = float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.45"))
+SENIORITY_PENALTY_FLOOR = 0.35
+SENIORITY_PENALTY_WEIGHT = float(
+    os.getenv("JOB_SCRAPER_SENIORITY_PENALTY_WEIGHT", "0.18")
+)
 
 PROFILE_TEXTS = {
     "SWE": (
@@ -66,6 +70,21 @@ PROFILE_TEXTS = {
     ),
 }
 
+SENIORITY_PENALTY_TEXTS = [
+    (
+        "Role aimed at established engineers with proven commercial experience "
+        "building, deploying, operating, and owning production systems. Expects "
+        "service reliability ownership, on-call exposure, system design depth, "
+        "cross-team technical leadership, and multiple years of professional "
+        "software or machine learning engineering work."
+    ),
+    (
+        "Senior or staff-level engineering role requiring technical leadership, "
+        "mentoring, architecture ownership, production responsibility, and proven "
+        "delivery of complex systems at scale across multiple teams."
+    ),
+]
+
 _PROFILE_MATCHER = None
 
 
@@ -84,6 +103,10 @@ class ProfileMatcher:
         self.util = util
         self.profile_embeddings = self.model.encode(
             [PROFILE_TEXTS[label] for label in self.labels],
+            normalize_embeddings=True,
+        )
+        self.seniority_penalty_embeddings = self.model.encode(
+            SENIORITY_PENALTY_TEXTS,
             normalize_embeddings=True,
         )
 
@@ -105,14 +128,30 @@ class ProfileMatcher:
         )
         top_profile, top_score = ranked_profiles[0]
         second_profile, second_score = ranked_profiles[1]
+        seniority_penalty_score = max(
+            self.util.cos_sim(
+                description_embedding,
+                self.seniority_penalty_embeddings,
+            )[0].tolist()
+        )
+        # Keep this as a soft nudge, not a hard filter. Titles already catch the
+        # obvious senior/staff cases; this only pushes senior-shaped descriptions down.
+        seniority_penalty_applied = max(
+            0.0,
+            seniority_penalty_score - SENIORITY_PENALTY_FLOOR,
+        ) * SENIORITY_PENALTY_WEIGHT
+        adjusted_top_score = top_score - seniority_penalty_applied
 
         return {
             "profile_scores": profile_scores,
             "top_profile": top_profile,
             "top_score": top_score,
+            "adjusted_top_score": adjusted_top_score,
             "second_profile": second_profile,
             "second_score": second_score,
             "score_margin": top_score - second_score,
+            "seniority_penalty_score": seniority_penalty_score,
+            "seniority_penalty_applied": seniority_penalty_applied,
             "fit_summary": format_fit_summary(ranked_profiles),
         }
 
@@ -196,7 +235,7 @@ def rank_jobs(jobs):
             continue
 
         score_data = matcher.score_description(job.get("description", ""))
-        if score_data["top_score"] < MIN_PROFILE_SCORE:
+        if score_data["adjusted_top_score"] < MIN_PROFILE_SCORE:
             continue
 
         ranked_jobs.append(
@@ -208,6 +247,7 @@ def rank_jobs(jobs):
 
     ranked_jobs.sort(
         key=lambda job: (
+            job["adjusted_top_score"],
             job["top_score"],
             job["score_margin"],
             job["second_score"],
