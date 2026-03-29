@@ -8,6 +8,10 @@
       "ai_ml_engineer"
     ],
     "min_top_score": 0.45,
+    "negative_profile_texts": [
+      "Senior or staff level role requiring multiple years of industry experience, technical leadership, mentoring, architecture ownership, and proven delivery of production systems at scale."
+    ],
+    "seniority_penalty_weight": 0.18,
     "care_about_sponsorship": false,
     "use_sponsor_lookup": false
   }

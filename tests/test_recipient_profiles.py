@@ -14,6 +14,8 @@ class RecipientProfilesTests(unittest.TestCase):
                 "email": "george@example.com",
                 "semantic_profiles": ["swe", "data_science"],
                 "min_top_score": 0.51,
+                "negative_profile_texts": ["senior role"],
+                "seniority_penalty_weight": 0.25,
                 "care_about_sponsorship": True,
                 "use_sponsor_lookup": True,
             }
@@ -31,6 +33,8 @@ class RecipientProfilesTests(unittest.TestCase):
         self.assertEqual("george@example.com", profiles[0]["email"])
         self.assertEqual(["swe", "data_science"], profiles[0]["semantic_profiles"])
         self.assertEqual(0.51, profiles[0]["min_top_score"])
+        self.assertEqual(["senior role"], profiles[0]["negative_profile_texts"])
+        self.assertEqual(0.25, profiles[0]["seniority_penalty_weight"])
         self.assertTrue(profiles[0]["care_about_sponsorship"])
         self.assertTrue(profiles[0]["use_sponsor_lookup"])
 

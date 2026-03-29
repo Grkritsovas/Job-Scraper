@@ -42,7 +42,9 @@ $env:JOB_SCRAPER_DRY_RUN = "1"
 5. Optional: create `recipient_profiles.local.json`.
    If you do not, the app falls back to a single recipient using `JOB_SCRAPER_EMAIL`.
 
-6. Run:
+6. Optional: create `sponsor_companies.local.csv` if you want sponsorship lookup.
+
+7. Run:
 
 ```bash
 python run_all.py
@@ -70,6 +72,10 @@ Example shape:
     "email": "you@example.com",
     "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
     "min_top_score": 0.45,
+    "negative_profile_texts": [
+      "Senior or staff level role requiring multiple years of industry experience, technical leadership, mentoring, architecture ownership, and proven delivery of production systems at scale."
+    ],
+    "seniority_penalty_weight": 0.18,
     "care_about_sponsorship": false,
     "use_sponsor_lookup": false
   },
@@ -78,11 +84,19 @@ Example shape:
     "email": "other@example.com",
     "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
     "min_top_score": 0.45,
+    "negative_profile_texts": [],
+    "seniority_penalty_weight": 0.10,
     "care_about_sponsorship": true,
     "use_sponsor_lookup": true
   }
 ]
 ```
+
+Minimum useful fields for an extra recipient:
+- `id`
+- `email`
+
+The other fields are preferences. If two recipients want the same role taste, you can keep the same semantic profiles and thresholds and only change `id` and `email`.
 
 Supported recipient fields:
 - `id`
@@ -90,11 +104,15 @@ Supported recipient fields:
 - `semantic_profiles`
 - `semantic_profile_texts`
 - `min_top_score`
+- `negative_profile_texts`
+- `seniority_penalty_weight`
 - `care_about_sponsorship`
 - `use_sponsor_lookup`
 
 `semantic_profiles` selects which embedding profiles are active for that recipient.
 `semantic_profile_texts` can override or add profile text by id.
+`negative_profile_texts` is optional extra text describing roles you want pushed down.
+`seniority_penalty_weight` controls how strongly those negative profiles affect ranking.
 
 Built-in semantic profile ids:
 - `swe`
@@ -105,6 +123,7 @@ Built-in semantic profile ids:
 
 Optional lookup source:
 - `SPONSOR_COMPANIES_CSV`
+- `SPONSOR_COMPANIES_CSV_TEXT`
 
 Local fallback:
 - `sponsor_companies.local.csv`
@@ -115,10 +134,18 @@ Bundled example:
 Expected CSV schema:
 
 ```csv
-company_name
-Example Sponsor Ltd
-Example Sponsor Plc
+Organisation,Town,Industry,Main Tier,Sub Tier,Date Added,Status
+Example Sponsor Ltd,London,Computer,Worker (A),Skilled Worker,2026-01-01,Active
 ```
+
+Only the company column is required.
+Useful extra columns the app understands:
+- `Town`
+- `Industry`
+- `Main Tier`
+- `Sub Tier`
+
+The `Status` column is ignored at the moment.
 
 The lookup is metadata only. It is not a job source.
 If enabled for a recipient profile:
@@ -130,6 +157,11 @@ Sponsorship classification is rule-based, not embedding-based:
 - `explicit_no`
 - `implied_no`
 - `unknown`
+
+When sponsorship logic is enabled for a recipient, digests also include a short line such as:
+- `Sponsorship: explicit no`
+- `Sponsorship: unknown, sponsor-licensed employer (Skilled Worker, London)`
+- `Sponsorship: explicit yes`
 
 ## Target Configuration
 
@@ -167,6 +199,7 @@ python manage_targets.py disable ashby multiverse
 ### Recommended GitHub Secrets
 
 - `RECIPIENT_PROFILES_JSON`
+- `SPONSOR_COMPANIES_CSV_TEXT`
 
 ### Optional GitHub Variables
 
@@ -188,6 +221,24 @@ A free Postgres provider like Supabase works well:
 4. Run the workflow manually once.
 
 The app creates its tables automatically on first run.
+
+### Easiest GitHub Setup
+
+1. Create your `recipient_profiles.local.json` locally and make sure it works.
+2. Copy the full JSON contents.
+3. In GitHub go to:
+   `Settings -> Secrets and variables -> Actions -> New repository secret`
+4. Create a secret named `RECIPIENT_PROFILES_JSON`
+5. Paste the JSON text exactly as-is
+
+For sponsorship CSV:
+
+1. Open the CSV in a text editor
+2. Copy the full CSV contents including the header row
+3. Create a GitHub secret named `SPONSOR_COMPANIES_CSV_TEXT`
+4. Paste the CSV text
+
+This is usually easier than managing file paths in GitHub Actions.
 
 ## Database Tables
 

@@ -32,7 +32,8 @@ class SponsorshipTests(unittest.TestCase):
     def test_load_lookup_and_match_company(self):
         csv_path = self.test_dir / "sponsors.csv"
         csv_path.write_text(
-            "company_name\nMarshmallow Ltd\nPhysicsX Inc\n",
+            "Organisation,Town,Industry,Main Tier,Sub Tier,Status\n"
+            "Marshmallow Ltd,London,Computer,Worker (A),Skilled Worker,Active\n",
             encoding="utf-8",
         )
 
@@ -50,6 +51,11 @@ class SponsorshipTests(unittest.TestCase):
 
         self.assertIn("marshmallow", lookup)
         self.assertTrue(enriched_jobs[0]["is_sponsor_licensed_employer"])
+        self.assertEqual("London", enriched_jobs[0]["sponsor_company_metadata"]["town"])
+        self.assertEqual(
+            "Skilled Worker",
+            enriched_jobs[0]["sponsor_company_metadata"]["sub_tier"],
+        )
 
     def test_classify_sponsorship_statuses(self):
         self.assertEqual(

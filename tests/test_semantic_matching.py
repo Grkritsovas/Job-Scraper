@@ -4,7 +4,7 @@ from semantic_matching import rank_jobs
 
 
 class FakeMatcher:
-    def score_description(self, description, profile_specs):
+    def score_description(self, description, profile_specs, negative_profile_texts=None):
         top_label = profile_specs[0]["label"]
         second_label = profile_specs[1]["label"] if len(profile_specs) > 1 else top_label
         top_score = {
@@ -114,12 +114,28 @@ class SemanticMatchingTests(unittest.TestCase):
         recipient_profile = {
             "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
             "min_top_score": 0.47,
+            "negative_profile_texts": [],
+            "seniority_penalty_weight": 0.18,
             "care_about_sponsorship": False,
             "use_sponsor_lookup": False,
         }
 
         ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
         self.assertEqual([], ranked_jobs)
+
+    def test_recipient_can_disable_seniority_penalty(self):
+        jobs = [make_job(url="https://example.com/soft-penalty")]
+        recipient_profile = {
+            "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
+            "min_top_score": 0.45,
+            "negative_profile_texts": ["senior role"],
+            "seniority_penalty_weight": 0.0,
+            "care_about_sponsorship": False,
+            "use_sponsor_lookup": False,
+        }
+
+        ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
+        self.assertEqual(1, len(ranked_jobs))
 
 
 if __name__ == "__main__":

@@ -25,6 +25,10 @@ def _default_profile():
             "semantic_profiles": list(DEFAULT_SEMANTIC_PROFILES),
             "semantic_profile_texts": {},
             "min_top_score": float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.45")),
+            "negative_profile_texts": [],
+            "seniority_penalty_weight": float(
+                os.getenv("JOB_SCRAPER_SENIORITY_PENALTY_WEIGHT", "0.18")
+            ),
             "care_about_sponsorship": False,
             "use_sponsor_lookup": False,
         }
@@ -44,6 +48,13 @@ def _normalize_profile(profile, index):
         "semantic_profile_texts": dict(profile.get("semantic_profile_texts") or {}),
         "min_top_score": float(
             profile.get("min_top_score", os.getenv("JOB_SCRAPER_MIN_SCORE", "0.45"))
+        ),
+        "negative_profile_texts": list(profile.get("negative_profile_texts") or []),
+        "seniority_penalty_weight": float(
+            profile.get(
+                "seniority_penalty_weight",
+                os.getenv("JOB_SCRAPER_SENIORITY_PENALTY_WEIGHT", "0.18"),
+            )
         ),
         "care_about_sponsorship": bool(profile.get("care_about_sponsorship", False)),
         "use_sponsor_lookup": bool(profile.get("use_sponsor_lookup", False)),

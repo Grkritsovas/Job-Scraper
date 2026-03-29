@@ -1,4 +1,5 @@
 import csv
+import io
 import os
 import re
 from pathlib import Path
@@ -69,6 +70,10 @@ def normalize_company_lookup_name(value):
     return " ".join(parts)
 
 
+def _normalize_header(value):
+    return re.sub(r"[^a-z0-9]+", "_", (value or "").lower()).strip("_")
+
+
 def _resolve_csv_path(csv_path=None):
     configured = csv_path or os.getenv("SPONSOR_COMPANIES_CSV", "").strip()
     if configured:
@@ -87,6 +92,8 @@ def _extract_company_name(row):
         "employer",
         "organisation",
         "organization",
+        "organisation_name",
+        "organization_name",
         "name",
     ]
 
@@ -102,21 +109,40 @@ def _extract_company_name(row):
     return ""
 
 
-def load_sponsor_company_lookup(csv_path=None):
+def _read_csv_rows(csv_path=None):
+    csv_text = os.getenv("SPONSOR_COMPANIES_CSV_TEXT", "").strip()
+    if csv_text:
+        reader = csv.DictReader(io.StringIO(csv_text))
+        return [{_normalize_header(key): value for key, value in row.items()} for row in reader]
+
     path = _resolve_csv_path(csv_path)
     if not path.exists():
-        return set()
+        return []
 
-    normalized_companies = set()
     with path.open("r", encoding="utf-8-sig", newline="") as file_obj:
         reader = csv.DictReader(file_obj)
-        for row in reader:
-            company_name = _extract_company_name(row)
-            normalized = normalize_company_lookup_name(company_name)
-            if normalized:
-                normalized_companies.add(normalized)
+        return [{_normalize_header(key): value for key, value in row.items()} for row in reader]
 
-    return normalized_companies
+
+def load_sponsor_company_lookup(csv_path=None):
+    rows = _read_csv_rows(csv_path)
+    company_lookup = {}
+
+    for row in rows:
+        company_name = _extract_company_name(row)
+        normalized_company = normalize_company_lookup_name(company_name)
+        if not normalized_company or normalized_company in company_lookup:
+            continue
+
+        company_lookup[normalized_company] = {
+            "company_name": company_name.strip(),
+            "town": (row.get("town") or "").strip(),
+            "industry": (row.get("industry") or "").strip(),
+            "main_tier": (row.get("main_tier") or "").strip(),
+            "sub_tier": (row.get("sub_tier") or "").strip(),
+        }
+
+    return company_lookup
 
 
 def classify_sponsorship_status(title, description):
@@ -139,6 +165,7 @@ def enrich_jobs(jobs, sponsor_company_lookup):
 
     for job in jobs:
         normalized_company = normalize_company_lookup_name(job.get("company", ""))
+        sponsor_metadata = sponsor_company_lookup.get(normalized_company, {})
         enriched_jobs.append(
             {
                 **job,
@@ -147,11 +174,8 @@ def enrich_jobs(jobs, sponsor_company_lookup):
                     job.get("title", ""),
                     job.get("description", ""),
                 ),
-                "is_sponsor_licensed_employer": (
-                    normalized_company in sponsor_company_lookup
-                    if sponsor_company_lookup and normalized_company
-                    else False
-                ),
+                "is_sponsor_licensed_employer": bool(sponsor_metadata),
+                "sponsor_company_metadata": sponsor_metadata,
             }
         )
 
@@ -161,8 +185,23 @@ def enrich_jobs(jobs, sponsor_company_lookup):
 def format_sponsorship_summary(job):
     status = (job.get("sponsorship_status") or "unknown").replace("_", " ")
     parts = [status]
+    metadata = job.get("sponsor_company_metadata") or {}
 
     if job.get("is_sponsor_licensed_employer"):
-        parts.append("sponsor-licensed employer")
+        employer_details = []
+        tier = metadata.get("sub_tier") or metadata.get("main_tier")
+        town = metadata.get("town")
+        if tier:
+            employer_details.append(tier)
+        if town:
+            employer_details.append(town)
+
+        if employer_details:
+            parts.append(
+                "sponsor-licensed employer "
+                f"({', '.join(detail for detail in employer_details if detail)})"
+            )
+        else:
+            parts.append("sponsor-licensed employer")
 
     return "Sponsorship: " + ", ".join(parts)

@@ -17,7 +17,7 @@ EMBEDDING_MODEL_NAME = os.getenv(
 )
 DEFAULT_MIN_PROFILE_SCORE = float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.45"))
 SENIORITY_PENALTY_FLOOR = 0.35
-SENIORITY_PENALTY_WEIGHT = float(
+DEFAULT_SENIORITY_PENALTY_WEIGHT = float(
     os.getenv("JOB_SCRAPER_SENIORITY_PENALTY_WEIGHT", "0.18")
 )
 SPONSOR_EXPLICIT_YES_BOOST = 0.03
@@ -99,7 +99,7 @@ PROFILE_ID_ALIASES = {
     "swe": "swe",
 }
 
-SENIORITY_PENALTY_TEXTS = [
+DEFAULT_NEGATIVE_PROFILE_TEXTS = [
     (
         "Role aimed at established engineers with proven commercial experience "
         "building, deploying, operating, and owning production systems. Expects "
@@ -183,10 +183,7 @@ class ProfileMatcher:
         self.util = util
         self.description_embedding_cache = {}
         self.profile_embedding_cache = {}
-        self.seniority_penalty_embeddings = self.model.encode(
-            SENIORITY_PENALTY_TEXTS,
-            normalize_embeddings=True,
-        )
+        self.negative_embedding_cache = {}
 
     def _get_description_embedding(self, description):
         if description not in self.description_embedding_cache:
@@ -205,7 +202,24 @@ class ProfileMatcher:
             )
         return self.profile_embedding_cache[cache_key]
 
-    def score_description(self, description, profile_specs):
+    def _get_negative_embeddings(self, negative_profile_texts):
+        normalized_negative_texts = tuple(
+            text.strip()
+            for text in (negative_profile_texts or DEFAULT_NEGATIVE_PROFILE_TEXTS)
+            if text and text.strip()
+        )
+        if not normalized_negative_texts:
+            return None
+
+        if normalized_negative_texts not in self.negative_embedding_cache:
+            self.negative_embedding_cache[normalized_negative_texts] = self.model.encode(
+                list(normalized_negative_texts),
+                normalize_embeddings=True,
+            )
+
+        return self.negative_embedding_cache[normalized_negative_texts]
+
+    def score_description(self, description, profile_specs, negative_profile_texts=None):
         description_embedding = self._get_description_embedding(description)
         profile_embeddings = self._get_profile_embeddings(profile_specs)
         similarities = self.util.cos_sim(
@@ -229,30 +243,24 @@ class ProfileMatcher:
         else:
             second_profile, second_score = top_profile, 0.0
 
-        seniority_penalty_score = max(
-            self.util.cos_sim(
-                description_embedding,
-                self.seniority_penalty_embeddings,
-            )[0].tolist()
-        )
-        # Keep this as a soft nudge, not a hard filter. Titles already catch the
-        # obvious senior/staff cases; this only pushes senior-shaped descriptions down.
-        seniority_penalty_applied = max(
-            0.0,
-            seniority_penalty_score - SENIORITY_PENALTY_FLOOR,
-        ) * SENIORITY_PENALTY_WEIGHT
-        ranking_score = top_score - seniority_penalty_applied
+        negative_embeddings = self._get_negative_embeddings(negative_profile_texts)
+        seniority_penalty_score = 0.0
+        if negative_embeddings is not None:
+            seniority_penalty_score = max(
+                self.util.cos_sim(
+                    description_embedding,
+                    negative_embeddings,
+                )[0].tolist()
+            )
 
         return {
             "profile_scores": profile_scores,
             "top_profile": top_profile,
             "top_score": top_score,
-            "ranking_score": ranking_score,
             "second_profile": second_profile,
             "second_score": second_score,
             "score_margin": top_score - second_score,
             "seniority_penalty_score": seniority_penalty_score,
-            "seniority_penalty_applied": seniority_penalty_applied,
             "fit_summary": format_fit_summary(ranked_profiles),
         }
 
@@ -327,6 +335,21 @@ def format_fit_summary(ranked_profiles):
     )
 
 
+def apply_seniority_penalty(score_data, recipient_profile):
+    seniority_penalty_weight = float(
+        recipient_profile.get(
+            "seniority_penalty_weight",
+            DEFAULT_SENIORITY_PENALTY_WEIGHT,
+        )
+    )
+    seniority_penalty_applied = max(
+        0.0,
+        score_data["seniority_penalty_score"] - SENIORITY_PENALTY_FLOOR,
+    ) * seniority_penalty_weight
+    ranking_score = score_data["top_score"] - seniority_penalty_applied
+    return ranking_score, seniority_penalty_applied
+
+
 def apply_sponsorship_adjustments(job, score_data, recipient_profile):
     sponsorship_enabled = (
         recipient_profile.get("care_about_sponsorship", False)
@@ -368,7 +391,17 @@ def rank_jobs(jobs, recipient_profile, matcher=None):
         if not passes_hard_filters(job):
             continue
 
-        score_data = matcher.score_description(job.get("description", ""), profile_specs)
+        score_data = matcher.score_description(
+            job.get("description", ""),
+            profile_specs,
+            recipient_profile.get("negative_profile_texts"),
+        )
+        ranking_score, seniority_penalty_applied = apply_seniority_penalty(
+            score_data,
+            recipient_profile,
+        )
+        score_data["seniority_penalty_applied"] = seniority_penalty_applied
+        score_data["ranking_score"] = ranking_score
         ranking_score = apply_sponsorship_adjustments(job, score_data, recipient_profile)
         if ranking_score is None or ranking_score < min_top_score:
             continue
