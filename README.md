@@ -14,6 +14,7 @@ Current sources:
 - Jobs are scraped once per run, then enriched once with sponsorship metadata.
 - Recipient profiles are loaded from config and scored independently.
 - Seen-job state is stored in a database per recipient profile.
+- Sponsorship lookup is a static CSV-backed metadata match, not a live company check.
 - Local runs use SQLite by default in `job_scraper.db`.
 - Hosted runs should use Postgres via `DATABASE_URL`.
 
@@ -62,6 +63,10 @@ Local fallback:
 
 Bundled example:
 - [examples/recipient_profiles.example.json](examples/recipient_profiles.example.json)
+
+One deployment can serve multiple recipients.
+Only the person managing the repo / GitHub Actions needs to set up secrets and config.
+Additional recipients do not need to fork the repo or do any technical setup; they just need an email address and a profile entry.
 
 Example shape:
 
@@ -148,6 +153,7 @@ Useful extra columns the app understands:
 The `Status` column is ignored at the moment.
 
 The lookup is metadata only. It is not a job source.
+It is not a live sponsorship check either. The app loads the CSV once per run and matches normalized company names against it in memory.
 If enabled for a recipient profile:
 - sponsor-licensed employers get a small positive prior
 - `explicit_no` sponsorship wording still wins and blocks the role
@@ -239,6 +245,13 @@ For sponsorship CSV:
 4. Paste the CSV text
 
 This is usually easier than managing file paths in GitHub Actions.
+
+Typical shared setup:
+
+1. One person owns the repo, secrets, and scheduled workflow
+2. That person adds multiple recipient entries to `RECIPIENT_PROFILES_JSON`
+3. Each recipient gets their own digest, threshold, and sponsorship preferences
+4. The other recipients do not need GitHub accounts, forks, or local setup
 
 ## Database Tables
 
