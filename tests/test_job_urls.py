@@ -10,7 +10,10 @@ from job_urls import (
 class JobUrlTests(unittest.TestCase):
     def test_allowlist_contains_only_known_hosts_for_global_sources(self):
         self.assertEqual({"jobs.ashbyhq.com"}, get_allowed_job_hosts("ashby"))
-        self.assertEqual({"jobs.lever.co"}, get_allowed_job_hosts("lever"))
+        self.assertEqual(
+            {"jobs.eu.lever.co", "jobs.lever.co"},
+            get_allowed_job_hosts("lever"),
+        )
         self.assertEqual(
             {
                 "boards.greenhouse.io",
@@ -93,6 +96,17 @@ class JobUrlTests(unittest.TestCase):
         )
 
         self.assertEqual("https://jobs.lever.co/palantir/123?team=backend", cleaned)
+
+    def test_sanitize_job_url_accepts_eu_lever_host(self):
+        cleaned = sanitize_job_url(
+            "https://jobs.eu.lever.co/flock/123?location=London&utm_source=newsletter",
+            source="lever",
+        )
+
+        self.assertEqual(
+            "https://jobs.eu.lever.co/flock/123?location=London",
+            cleaned,
+        )
 
     def test_rejects_deceptive_subdomain(self):
         cleaned = sanitize_job_url(

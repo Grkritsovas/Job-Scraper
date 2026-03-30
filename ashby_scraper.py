@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlparse
+
 import requests
 
 from job_urls import sanitize_job_url
@@ -11,11 +13,46 @@ from utils import (
 )
 
 
-def get_company_slugs(companies=None):
+def normalize_ashby_target(value):
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return {"company": "", "location_ids": set(), "label": ""}
+
+    if "ashbyhq.com" not in cleaned:
+        company = cleaned.lower()
+        return {"company": company, "location_ids": set(), "label": company}
+
+    parsed = urlparse(cleaned)
+    path_parts = [part for part in parsed.path.split("/") if part]
+    company = (path_parts[0] if path_parts else "").lower()
+    query_params = parse_qs(parsed.query)
+    location_ids = {
+        location_id.strip()
+        for location_id in query_params.get("locationId", [])
+        if location_id.strip()
+    }
+    return {
+        "company": company,
+        "location_ids": location_ids,
+        "label": cleaned,
+    }
+
+
+def load_targets(companies=None):
     if companies is None:
         companies = load_ashby_targets()
 
-    return list(dict.fromkeys(company.lower() for company in companies if company))
+    deduped_targets = {}
+    for company in companies:
+        normalized = normalize_ashby_target(company)
+        key = (
+            normalized["company"],
+            tuple(sorted(normalized["location_ids"])),
+        )
+        if normalized["company"] and key not in deduped_targets:
+            deduped_targets[key] = normalized
+
+    return list(deduped_targets.values())
 
 
 def fetch_ashby_jobs(company):
@@ -33,8 +70,10 @@ def fetch_ashby_jobs(company):
                         id
                         title
                         locationName
+                        locationId
                         secondaryLocations {
                             locationName
+                            locationId
                         }
                     }
                 }
@@ -71,7 +110,18 @@ def get_job_locations(job):
     return [job.get("locationName", ""), *secondary_locations]
 
 
-def collect_company_jobs(company, seen_urls, diagnostics=None):
+def get_job_location_ids(job):
+    secondary_location_ids = [
+        location.get("locationId", "")
+        for location in job.get("secondaryLocations") or []
+    ]
+    return {location_id for location_id in [job.get("locationId", ""), *secondary_location_ids] if location_id}
+
+
+def collect_company_jobs(target, seen_urls, diagnostics=None):
+    company = target["company"]
+    location_ids = target["location_ids"]
+    target_label = target["label"] or company
     jobs = fetch_ashby_jobs(company)
     matches = []
     company_name = normalize_company_name(company)
@@ -101,7 +151,10 @@ def collect_company_jobs(company, seen_urls, diagnostics=None):
         )
 
         locations = get_job_locations(job)
-        if not is_uk_location(locations):
+        if location_ids:
+            if not (get_job_location_ids(job) & location_ids):
+                continue
+        elif not is_uk_location(locations):
             continue
         counts["uk_jobs"] += 1
 
@@ -139,7 +192,7 @@ def collect_company_jobs(company, seen_urls, diagnostics=None):
                 "locations": locations,
                 "location": format_locations(locations),
                 "source": "ashby",
-                "target_value": company,
+                "target_value": target_label,
                 "description_status": description_info["status"],
                 "description_looks_like_html": description_info["looks_like_html"],
             }
@@ -163,13 +216,13 @@ def collect_company_jobs(company, seen_urls, diagnostics=None):
         counts["reason"] = "ok"
 
     if diagnostics is not None:
-        diagnostics.record_target_summary("ashby", company, counts)
+        diagnostics.record_target_summary("ashby", target_label, counts)
 
     return matches
 
 
 def collect_jobs(seen_urls, companies=None, diagnostics=None):
     matches = []
-    for company in get_company_slugs(companies):
-        matches.extend(collect_company_jobs(company, seen_urls, diagnostics))
+    for target in load_targets(companies):
+        matches.extend(collect_company_jobs(target, seen_urls, diagnostics))
     return matches

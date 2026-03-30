@@ -1,6 +1,16 @@
 import unittest
+from unittest.mock import Mock, patch
 
-from lever_scraper import get_job_locations, get_primary_location, is_flexible_location
+from lever_scraper import (
+    DEFAULT_LEVER_API_HOST,
+    EU_LEVER_API_HOST,
+    fetch_lever_jobs,
+    get_job_locations,
+    get_primary_location,
+    is_flexible_location,
+    load_sites,
+    normalize_lever_target,
+)
 from utils import is_uk_location
 
 
@@ -34,6 +44,77 @@ class LeverScraperTests(unittest.TestCase):
 
         self.assertTrue(is_flexible_location(primary_location))
         self.assertTrue(is_uk_location(locations))
+
+    def test_normalize_lever_target_from_slug_defaults_to_standard_api(self):
+        self.assertEqual(
+            {
+                "site": "palantir",
+                "preferred_api_host": DEFAULT_LEVER_API_HOST,
+            },
+            normalize_lever_target("palantir"),
+        )
+
+    def test_normalize_lever_target_from_eu_url_prefers_eu_api(self):
+        self.assertEqual(
+            {
+                "site": "cirrus",
+                "preferred_api_host": EU_LEVER_API_HOST,
+            },
+            normalize_lever_target("https://jobs.eu.lever.co/cirrus?location=London"),
+        )
+
+    def test_load_sites_dedupes_by_site_but_preserves_preferred_host(self):
+        self.assertEqual(
+            [
+                {
+                    "site": "cirrus",
+                    "preferred_api_host": EU_LEVER_API_HOST,
+                }
+            ],
+            load_sites(
+                [
+                    "https://jobs.eu.lever.co/cirrus?location=London",
+                    "cirrus",
+                ]
+            ),
+        )
+
+    @patch("lever_scraper.requests.get")
+    def test_fetch_lever_jobs_falls_back_to_eu_api_after_standard_404(self, mock_get):
+        response_404 = Mock()
+        response_404.raise_for_status.side_effect = __import__("requests").HTTPError(
+            "404 Client Error"
+        )
+        response_404.json.return_value = {"ok": False, "error": "Document not found"}
+
+        response_200 = Mock()
+        response_200.raise_for_status.return_value = None
+        response_200.json.return_value = [{"text": "Software Engineer"}]
+
+        response_empty = Mock()
+        response_empty.raise_for_status.return_value = None
+        response_empty.json.return_value = []
+
+        def fake_get(url, headers=None, timeout=None):
+            if url.startswith(
+                "https://api.lever.co/v0/postings/cirrus?mode=json&skip=0&limit=100"
+            ):
+                return response_404
+            if url.startswith(
+                "https://api.eu.lever.co/v0/postings/cirrus?mode=json&skip=0&limit=100"
+            ):
+                return response_200
+            if url.startswith(
+                "https://api.eu.lever.co/v0/postings/cirrus?mode=json&skip=100&limit=100"
+            ):
+                return response_empty
+            raise AssertionError(url)
+
+        mock_get.side_effect = fake_get
+
+        jobs = fetch_lever_jobs("cirrus", DEFAULT_LEVER_API_HOST)
+
+        self.assertEqual([{"text": "Software Engineer"}], jobs)
 
 
 if __name__ == "__main__":

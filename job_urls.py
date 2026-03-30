@@ -22,7 +22,7 @@ KNOWN_PLATFORM_HOSTS = {
         "job-boards.greenhouse.io",
         "job-boards.eu.greenhouse.io",
     },
-    "lever": {"jobs.lever.co"},
+    "lever": {"jobs.lever.co", "jobs.eu.lever.co"},
 }
 
 

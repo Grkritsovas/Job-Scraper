@@ -219,6 +219,8 @@ Each value can be:
 - a local file such as `ashby_companies.local.json`
 - the bundled example seed files in `examples/`
 
+For Ashby and Lever, you can use either a simple slug like `elevenlabs` / `palantir` or a full public board URL. Full URLs are useful when the board uses filtered URLs such as Ashby `locationId=...` or EU Lever boards on `jobs.eu.lever.co`.
+
 The bundled example files contain UK-focused starter targets.
 
 ## Target Management CLI

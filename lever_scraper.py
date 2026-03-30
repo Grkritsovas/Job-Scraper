@@ -13,58 +13,101 @@ from utils import (
 )
 
 
-LEVER_API_URL = "https://api.lever.co/v0/postings/{site}?mode=json&skip={skip}&limit={limit}"
+LEVER_API_URL = "https://{api_host}/v0/postings/{site}?mode=json&skip={skip}&limit={limit}"
 PAGE_SIZE = 100
+DEFAULT_LEVER_API_HOST = "api.lever.co"
+EU_LEVER_API_HOST = "api.eu.lever.co"
 
 
-def normalize_lever_site(value):
+def normalize_lever_target(value):
     cleaned = value.strip()
     if "lever.co" not in cleaned:
-        return cleaned.strip("/").split("/")[-1]
+        site = cleaned.strip("/").split("/")[-1]
+        return {
+            "site": site,
+            "preferred_api_host": DEFAULT_LEVER_API_HOST,
+        }
 
     parsed = urlparse(cleaned)
     path_parts = [part for part in parsed.path.split("/") if part]
     if not path_parts:
-        return ""
+        return {
+            "site": "",
+            "preferred_api_host": DEFAULT_LEVER_API_HOST,
+        }
 
-    return path_parts[0]
+    preferred_api_host = (
+        EU_LEVER_API_HOST
+        if (parsed.hostname or "").lower() == "jobs.eu.lever.co"
+        else DEFAULT_LEVER_API_HOST
+    )
+    return {
+        "site": path_parts[0],
+        "preferred_api_host": preferred_api_host,
+    }
+
+
+def normalize_lever_site(value):
+    return normalize_lever_target(value)["site"]
 
 
 def load_sites(sites=None):
     if sites is None:
         sites = load_lever_targets()
 
-    return list(
-        dict.fromkeys(
-            normalized
-            for normalized in (normalize_lever_site(value) for value in sites)
-            if normalized
+    deduped_sites = {}
+    for value in sites:
+        normalized = normalize_lever_target(value)
+        site = normalized["site"]
+        if site and site not in deduped_sites:
+            deduped_sites[site] = normalized
+
+    return list(deduped_sites.values())
+
+
+def _lever_api_hosts(preferred_api_host):
+    if preferred_api_host == EU_LEVER_API_HOST:
+        return [EU_LEVER_API_HOST, DEFAULT_LEVER_API_HOST]
+    return [DEFAULT_LEVER_API_HOST, EU_LEVER_API_HOST]
+
+
+def fetch_lever_jobs(site, preferred_api_host=DEFAULT_LEVER_API_HOST):
+    failures = []
+
+    for api_host in _lever_api_hosts(preferred_api_host):
+        jobs = []
+        skip = 0
+
+        while True:
+            url = LEVER_API_URL.format(
+                api_host=api_host,
+                site=site,
+                skip=skip,
+                limit=PAGE_SIZE,
+            )
+            try:
+                response = requests.get(url, headers=HEADERS, timeout=20)
+                response.raise_for_status()
+                batch = response.json()
+            except requests.RequestException as exc:
+                failures.append((api_host, exc))
+                break
+
+            if not batch:
+                return jobs
+
+            jobs.extend(batch)
+            if len(batch) < PAGE_SIZE:
+                return jobs
+
+            skip += PAGE_SIZE
+
+    if failures:
+        failure_messages = "; ".join(
+            f"{api_host}: {exc}" for api_host, exc in failures
         )
-    )
-
-
-def fetch_lever_jobs(site):
-    jobs = []
-    skip = 0
-
-    while True:
-        url = LEVER_API_URL.format(site=site, skip=skip, limit=PAGE_SIZE)
-        try:
-            response = requests.get(url, headers=HEADERS, timeout=20)
-            response.raise_for_status()
-            batch = response.json()
-        except requests.RequestException as exc:
-            print(f"Failed to fetch Lever jobs for {site}: {exc}")
-            return []
-
-        if not batch:
-            return jobs
-
-        jobs.extend(batch)
-        if len(batch) < PAGE_SIZE:
-            return jobs
-
-        skip += PAGE_SIZE
+        print(f"Failed to fetch Lever jobs for {site}: {failure_messages}")
+    return []
 
 
 def get_job_locations(job):
@@ -105,8 +148,9 @@ def get_job_url(job, site):
     )
 
 
-def collect_site_jobs(site, seen_urls, diagnostics=None):
-    jobs = fetch_lever_jobs(site)
+def collect_site_jobs(target, seen_urls, diagnostics=None):
+    site = target["site"]
+    jobs = fetch_lever_jobs(site, target["preferred_api_host"])
     company_name = normalize_company_name(site)
     matches = []
     counts = {
@@ -199,6 +243,6 @@ def collect_site_jobs(site, seen_urls, diagnostics=None):
 
 def collect_jobs(seen_urls, sites=None, diagnostics=None):
     matches = []
-    for site in load_sites(sites):
-        matches.extend(collect_site_jobs(site, seen_urls, diagnostics))
+    for target in load_sites(sites):
+        matches.extend(collect_site_jobs(target, seen_urls, diagnostics))
     return matches
