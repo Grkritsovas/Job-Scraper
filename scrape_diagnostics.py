@@ -46,12 +46,10 @@ class ScrapeDiagnostics:
             f"[ranking:{recipient_id}] "
             f"input={payload.get('input_jobs', 0)} "
             f"hard_filtered={payload.get('hard_filtered_jobs', 0)} "
-            f"sponsorship_rejected={payload.get('sponsorship_rejected_jobs', 0)} "
             f"below_threshold={payload.get('below_threshold_jobs', 0)} "
             f"ranked={payload.get('ranked_jobs', 0)} "
             f"unseen={payload.get('unseen_jobs', 0)} "
             f"recipient_seen={payload.get('recipient_seen_urls', 0)} "
-            f"legacy_seen={payload.get('legacy_seen_urls', 0)} "
             f"hard_filter_reasons={formatted_reasons}"
         )
 

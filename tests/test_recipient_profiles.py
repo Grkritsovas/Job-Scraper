@@ -19,7 +19,6 @@ class RecipientProfilesTests(unittest.TestCase):
                 "preferred_salary_max_gbp": 45000,
                 "salary_hard_cap_gbp": 50000,
                 "salary_penalty_max": 0.35,
-                "max_years_experience": 2,
                 "care_about_sponsorship": True,
                 "use_sponsor_lookup": True,
             }
@@ -42,7 +41,6 @@ class RecipientProfilesTests(unittest.TestCase):
         self.assertEqual(45000.0, profiles[0]["preferred_salary_max_gbp"])
         self.assertEqual(50000.0, profiles[0]["salary_hard_cap_gbp"])
         self.assertEqual(0.35, profiles[0]["salary_penalty_max"])
-        self.assertEqual(2.0, profiles[0]["max_years_experience"])
         self.assertTrue(profiles[0]["care_about_sponsorship"])
         self.assertTrue(profiles[0]["use_sponsor_lookup"])
 
@@ -61,25 +59,6 @@ class RecipientProfilesTests(unittest.TestCase):
             ["swe", "data_science", "ai_ml_engineer"],
             profiles[0]["semantic_profiles"],
         )
-
-    def test_allows_null_max_years_experience(self):
-        configured = [
-            {
-                "id": "george",
-                "email": "george@example.com",
-                "semantic_profiles": ["swe"],
-                "max_years_experience": None,
-            }
-        ]
-
-        with patch.dict(
-            os.environ,
-            {"RECIPIENT_PROFILES_JSON": json.dumps(configured)},
-            clear=True,
-        ):
-            profiles = load_recipient_profiles()
-
-        self.assertIsNone(profiles[0]["max_years_experience"])
 
 
 if __name__ == "__main__":

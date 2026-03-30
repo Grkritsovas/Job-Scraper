@@ -11,12 +11,51 @@ Current sources:
 ## How It Works
 
 - Targets come from environment variables, local JSON files, or bundled example seed files.
+- Runtime targets do not come from the database.
 - Jobs are scraped once per run, then enriched once with sponsorship metadata.
 - Recipient profiles are loaded from config and scored independently.
 - Seen-job state is stored in a database per recipient profile.
 - Sponsorship lookup is a static CSV-backed metadata match, not a live company check.
 - Local runs use SQLite by default in `job_scraper.db`.
 - Hosted runs should use Postgres via `DATABASE_URL`.
+
+## Local Vs Hosted
+
+Local run:
+- you run `python run_all.py` on your machine
+- targets come from environment variables, local JSON files, or bundled example files
+- seen-job state is stored in local SQLite unless you explicitly set `DATABASE_URL`
+
+Hosted run:
+- GitHub Actions runs `python run_all.py` in a fresh runner
+- targets still come from GitHub Actions variables or the committed example files
+- seen-job state must live in Postgres via `DATABASE_URL`, because the runner filesystem is temporary
+
+Practical rule:
+- config lives in repo files or GitHub Actions variables
+- seen-job history lives in the database
+
+## Architecture
+
+Tiny data flow:
+1. Load targets from config.
+2. Scrape jobs from Ashby, Greenhouse, Lever, and configured Next.js pages.
+3. Normalize URLs, locations, and descriptions.
+4. Enrich jobs with sponsorship metadata from the sponsor CSV.
+5. Rank jobs separately for each recipient profile.
+6. Remove jobs already seen by that recipient.
+7. Send the digest email.
+8. Store sent job URLs in `recipient_seen_jobs`.
+
+Main modules:
+- `run_all.py`: runtime orchestration
+- `target_config.py`: target loading and precedence
+- `ashby_scraper.py`, `greenhouse_scraper.py`, `lever_scraper.py`, `nextjs_scraper.py`: source-specific scraping
+- `descriptions.py`, `locations.py`, `company_names.py`: shared normalization helpers
+- `profile_library.py`, `hard_filters.py`, `ranking.py`: matching and ranking pipeline
+- `sponsorship.py`: sponsor lookup and text classification
+- `storage.py`: recipient seen-job persistence only
+- `digest.py`: email digest formatting
 
 ## Local Quickstart
 
@@ -85,7 +124,6 @@ Example shape:
     "preferred_salary_max_gbp": 45000,
     "salary_hard_cap_gbp": 70000,
     "salary_penalty_max": 0.35,
-    "max_years_experience": 1,
     "care_about_sponsorship": false,
     "use_sponsor_lookup": false
   },
@@ -105,7 +143,6 @@ Example shape:
     "preferred_salary_max_gbp": 45000,
     "salary_hard_cap_gbp": 70000,
     "salary_penalty_max": 0.35,
-    "max_years_experience": 1,
     "care_about_sponsorship": true,
     "use_sponsor_lookup": true
   }
@@ -130,7 +167,6 @@ Supported recipient fields:
 - `preferred_salary_max_gbp`
 - `salary_hard_cap_gbp`
 - `salary_penalty_max`
-- `max_years_experience`
 - `care_about_sponsorship`
 - `use_sponsor_lookup`
 
@@ -141,7 +177,7 @@ Supported recipient fields:
 `preferred_salary_max_gbp` is where salary mismatch penalty begins.
 `salary_hard_cap_gbp` is where that penalty reaches its maximum.
 `salary_penalty_max` controls how much score can be deducted for salary mismatch.
-`max_years_experience` is the highest explicit years-of-experience requirement the recipient is willing to allow from the job description. Set it to `null` to disable experience-based hard rejection.
+The hard filters are intentionally junior-oriented. Explicit `2+ years` requirements and clearly senior titles are rejected with fixed logic rather than per-recipient tuning.
 
 If you use a custom semantic profile id such as `marketing_assistant` and do not provide
 `semantic_profile_texts`, the app now falls back to a simple generated profile text so the run
@@ -181,19 +217,14 @@ example sponsor
 ```
 
 Only the company column is required.
-Useful extra columns the app understands:
-- `Town`
-- `Industry`
-- `Main Tier`
-- `Sub Tier`
-
-The `Status` column is ignored at the moment.
 
 The lookup is metadata only. It is not a job source.
 It is not a live sponsorship check either. The app loads the CSV once per run and matches normalized company names against it in memory.
 If enabled for a recipient profile:
-- sponsor-licensed employers get a small positive prior
-- `explicit_no` sponsorship wording still wins and blocks the role
+- `use_sponsor_lookup` adds a `[Sponsor-licensed]` company marker when the company matches the CSV
+- `care_about_sponsorship` adds a `Sponsorship: ...` line only when the job text explicitly or implicitly says something useful
+
+Neither sponsorship option changes ranking or auto-rejects jobs anymore.
 
 Sponsorship classification is rule-based, not embedding-based:
 - `explicit_yes`
@@ -201,9 +232,10 @@ Sponsorship classification is rule-based, not embedding-based:
 - `implied_no`
 - `unknown`
 
-When sponsorship logic is enabled for a recipient, digests also include a short line such as:
+When sponsorship logic is enabled for a recipient, digests can include:
+- `Company [Sponsor-licensed]`
 - `Sponsorship: explicit no`
-- `Sponsorship: unknown, sponsor-licensed employer (Skilled Worker, London)`
+- `Sponsorship: implied no`
 - `Sponsorship: explicit yes`
 
 ## Target Configuration
@@ -219,19 +251,28 @@ Each value can be:
 - a local file such as `ashby_companies.local.json`
 - the bundled example seed files in `examples/`
 
+Precedence is:
+1. environment variable
+2. local file
+3. bundled example file
+
 For Ashby and Lever, you can use either a simple slug like `elevenlabs` / `palantir` or a full public board URL. Full URLs are useful when the board uses filtered URLs such as Ashby `locationId=...` or EU Lever boards on `jobs.eu.lever.co`.
 
 The bundled example files contain UK-focused starter targets.
+These config files are now the only runtime source of truth for targets. Supabase is no longer used to store or toggle target lists.
 
 ## Target Management CLI
 
-You can manage database-backed targets without editing SQL directly:
+You can inspect the effective target config without guessing which file or env var won:
 
 ```bash
 python manage_targets.py list
-python manage_targets.py add greenhouse https://job-boards.greenhouse.io/koboldmetals
-python manage_targets.py disable ashby multiverse
+python manage_targets.py list ashby
 ```
+
+The CLI is now read-only. To change hosted targets, update:
+- the GitHub Actions variable, if you use one, or
+- the committed example file in `examples/`, if you rely on repo defaults
 
 ## GitHub Actions Setup
 
@@ -254,7 +295,8 @@ python manage_targets.py disable ashby multiverse
 - `NEXTJS_URLS_JSON`
 - `SPONSOR_COMPANIES_CSV`
 
-If you do not set the optional target variables, the workflow seeds from the bundled example files.
+If you do not set the optional target variables, the workflow reads the bundled example files directly.
+If you do set those variables, they override the repo defaults directly.
 
 ### Free Postgres Setup
 
@@ -302,16 +344,17 @@ Typical shared setup:
 
 ## Database Tables
 
-`scrape_targets`
-- stores target values per source
-- allows manual enable/disable control
-
 `recipient_seen_jobs`
 - stores seen job URLs per recipient profile
 
-`seen_jobs`
-- older shared seen-job table
-- still read as legacy seed data for existing setups
+Old setups may still contain unused legacy tables such as `scrape_targets` or `seen_jobs`, but the current runtime does not read them.
+
+Safe cleanup order for old tables:
+1. deploy the refactor
+2. let GitHub Actions complete one successful run on the new code
+3. then optionally drop old tables such as `scrape_targets` and `seen_jobs`
+
+Waiting for one successful hosted run first is just a safety check: it confirms the deployed workflow really no longer depends on those tables before you remove them.
 
 ## Responsible Use
 

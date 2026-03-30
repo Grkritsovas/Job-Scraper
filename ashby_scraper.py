@@ -2,15 +2,11 @@ from urllib.parse import parse_qs, urlparse
 
 import requests
 
+from company_names import normalize_company_name
+from descriptions import HEADERS, fetch_job_description_details
 from job_urls import sanitize_job_url
+from locations import format_locations, is_uk_location
 from target_config import load_ashby_targets
-from utils import (
-    HEADERS,
-    fetch_job_description_details,
-    format_locations,
-    is_uk_location,
-    normalize_company_name,
-)
 
 
 def normalize_ashby_target(value):

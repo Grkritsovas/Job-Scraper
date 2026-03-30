@@ -12,7 +12,6 @@
     "preferred_salary_max_gbp": 45000,
     "salary_hard_cap_gbp": 70000,
     "salary_penalty_max": 0.35,
-    "max_years_experience": 1,
     "care_about_sponsorship": false,
     "use_sponsor_lookup": false
   },
@@ -32,7 +31,6 @@
     "preferred_salary_max_gbp": 45000,
     "salary_hard_cap_gbp": 70000,
     "salary_penalty_max": 0.35,
-    "max_years_experience": 1,
     "care_about_sponsorship": true,
     "use_sponsor_lookup": true
   }

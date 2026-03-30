@@ -2,13 +2,7 @@ import os
 import re
 
 from config_loader import load_json_config
-
-
-DEFAULT_SEMANTIC_PROFILES = [
-    "swe",
-    "data_science",
-    "ai_ml_engineer",
-]
+from profile_library import DEFAULT_SEMANTIC_PROFILES
 
 
 def _slugify(value):
@@ -32,9 +26,6 @@ def _default_profile():
             "preferred_salary_max_gbp": None,
             "salary_hard_cap_gbp": None,
             "salary_penalty_max": 0.35,
-            "max_years_experience": float(
-                os.getenv("JOB_SCRAPER_MAX_YEARS_EXPERIENCE", "1")
-            ),
             "care_about_sponsorship": False,
             "use_sponsor_lookup": False,
         }
@@ -44,16 +35,6 @@ def _default_profile():
 def _normalize_profile(profile, index):
     recipient_id = profile.get("id") or profile.get("email") or f"recipient_{index + 1}"
     email = (profile.get("email") or os.getenv("JOB_SCRAPER_EMAIL", "")).strip()
-    if "max_years_experience" in profile:
-        max_years_experience = (
-            float(profile["max_years_experience"])
-            if profile["max_years_experience"] is not None
-            else None
-        )
-    else:
-        max_years_experience = float(
-            os.getenv("JOB_SCRAPER_MAX_YEARS_EXPERIENCE", "1")
-        )
 
     return {
         "id": _slugify(recipient_id),
@@ -83,7 +64,6 @@ def _normalize_profile(profile, index):
             else None
         ),
         "salary_penalty_max": float(profile.get("salary_penalty_max", 0.35)),
-        "max_years_experience": max_years_experience,
         "care_about_sponsorship": bool(profile.get("care_about_sponsorship", False)),
         "use_sponsor_lookup": bool(profile.get("use_sponsor_lookup", False)),
     }

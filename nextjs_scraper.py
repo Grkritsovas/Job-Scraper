@@ -3,15 +3,11 @@ import json
 import requests
 from bs4 import BeautifulSoup
 
+from company_names import get_company_name_from_url
+from descriptions import HEADERS, fetch_job_description_details
 from job_urls import normalize_seed_url, sanitize_job_url
+from locations import format_locations, is_uk_location
 from target_config import load_nextjs_targets
-from utils import (
-    HEADERS,
-    fetch_job_description_details,
-    format_locations,
-    get_company_name_from_url,
-    is_uk_location,
-)
 
 
 def load_urls(urls=None):

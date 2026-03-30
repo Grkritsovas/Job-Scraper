@@ -4,29 +4,8 @@ from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///job_scraper.db")
 
 SCHEMA_STATEMENTS = [
-    """
-    CREATE TABLE IF NOT EXISTS scrape_targets (
-        source_type TEXT NOT NULL,
-        target_value TEXT NOT NULL,
-        enabled INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (source_type, target_value)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS seen_jobs (
-        job_url TEXT PRIMARY KEY,
-        source_type TEXT NOT NULL,
-        target_value TEXT,
-        company_name TEXT,
-        title TEXT,
-        location TEXT,
-        first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-    """,
     """
     CREATE TABLE IF NOT EXISTS recipient_seen_jobs (
         recipient_id TEXT NOT NULL,
@@ -44,7 +23,7 @@ SCHEMA_STATEMENTS = [
 
 
 def create_storage(database_url=None):
-    return Storage(database_url or DEFAULT_DATABASE_URL)
+    return Storage(database_url or os.getenv("DATABASE_URL", "sqlite:///job_scraper.db"))
 
 
 class Storage:
@@ -65,11 +44,7 @@ class Storage:
         self._ensure_postgres_schema()
 
     def load_seen_urls(self, recipient_id):
-        seen_sets = self.load_seen_url_sets(recipient_id)
-        return seen_sets["recipient_seen_urls"] | seen_sets["legacy_seen_urls"]
-
-    def load_seen_url_sets(self, recipient_id):
-        recipient_rows = self._fetch_all(
+        rows = self._fetch_all(
             self._sql(
                 """
                 SELECT job_url
@@ -79,18 +54,7 @@ class Storage:
             ),
             (recipient_id,),
         )
-        legacy_rows = self._fetch_all(
-            "SELECT job_url FROM seen_jobs",
-            (),
-        )
-        return {
-            "recipient_seen_urls": {
-                row["job_url"] for row in recipient_rows if row.get("job_url")
-            },
-            "legacy_seen_urls": {
-                row["job_url"] for row in legacy_rows if row.get("job_url")
-            },
-        }
+        return {row["job_url"] for row in rows if row.get("job_url")}
 
     def store_seen_jobs(self, recipient_id, jobs):
         rows = [
@@ -150,171 +114,6 @@ class Storage:
                     ON CONFLICT (recipient_id, job_url) DO NOTHING
                     """,
                     rows,
-                )
-            connection.commit()
-        finally:
-            connection.close()
-
-    def seed_targets(self, target_map):
-        # Insert missing targets without overwriting enable/disable choices saved in the DB.
-        rows = []
-        for source_type, target_values in target_map.items():
-            for target_value in target_values:
-                rows.append((source_type, target_value))
-
-        if not rows:
-            return
-
-        if self.backend == "sqlite":
-            connection = self._connect_sqlite()
-            try:
-                connection.executemany(
-                    """
-                    INSERT OR IGNORE INTO scrape_targets (
-                        source_type,
-                        target_value,
-                        enabled
-                    )
-                    VALUES (?, ?, 1)
-                    """,
-                    rows,
-                )
-                connection.commit()
-            finally:
-                connection.close()
-            return
-
-        connection = self._connect_postgres()
-        try:
-            with connection.cursor() as cursor:
-                cursor.executemany(
-                    """
-                    INSERT INTO scrape_targets (
-                        source_type,
-                        target_value,
-                        enabled
-                    )
-                    VALUES (%s, %s, 1)
-                    ON CONFLICT (source_type, target_value) DO NOTHING
-                    """,
-                    rows,
-                )
-            connection.commit()
-        finally:
-            connection.close()
-
-    def load_targets(self, source_type):
-        rows = self._fetch_all(
-            self._sql(
-                """
-                SELECT target_value
-                FROM scrape_targets
-                WHERE source_type = {placeholder}
-                  AND enabled = 1
-                ORDER BY target_value
-                """
-            ),
-            (source_type,),
-        )
-        return [row["target_value"] for row in rows]
-
-    def list_targets(self, source_type=None):
-        if source_type:
-            rows = self._fetch_all(
-                self._sql(
-                    """
-                    SELECT source_type, target_value, enabled
-                    FROM scrape_targets
-                    WHERE source_type = {placeholder}
-                    ORDER BY source_type, target_value
-                    """
-                ),
-                (source_type,),
-            )
-            return rows
-
-        return self._fetch_all(
-            """
-            SELECT source_type, target_value, enabled
-            FROM scrape_targets
-            ORDER BY source_type, target_value
-            """,
-            (),
-        )
-
-    def upsert_target(self, source_type, target_value, enabled=1):
-        row = (source_type, target_value, enabled)
-
-        if self.backend == "sqlite":
-            connection = self._connect_sqlite()
-            try:
-                connection.execute(
-                    """
-                    INSERT INTO scrape_targets (
-                        source_type,
-                        target_value,
-                        enabled
-                    )
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(source_type, target_value)
-                    DO UPDATE SET enabled = excluded.enabled
-                    """,
-                    row,
-                )
-                connection.commit()
-            finally:
-                connection.close()
-            return
-
-        connection = self._connect_postgres()
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO scrape_targets (
-                        source_type,
-                        target_value,
-                        enabled
-                    )
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (source_type, target_value)
-                    DO UPDATE SET enabled = EXCLUDED.enabled
-                    """,
-                    row,
-                )
-            connection.commit()
-        finally:
-            connection.close()
-
-    def set_target_enabled(self, source_type, target_value, enabled):
-        if self.backend == "sqlite":
-            connection = self._connect_sqlite()
-            try:
-                connection.execute(
-                    """
-                    UPDATE scrape_targets
-                    SET enabled = ?
-                    WHERE source_type = ?
-                      AND target_value = ?
-                    """,
-                    (enabled, source_type, target_value),
-                )
-                connection.commit()
-            finally:
-                connection.close()
-            return
-
-        connection = self._connect_postgres()
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE scrape_targets
-                    SET enabled = %s
-                    WHERE source_type = %s
-                      AND target_value = %s
-                    """,
-                    (enabled, source_type, target_value),
                 )
             connection.commit()
         finally:

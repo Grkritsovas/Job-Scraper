@@ -144,10 +144,6 @@ def load_sponsor_company_lookup(csv_path=None):
 
         company_lookup[normalized_company] = {
             "company_name": company_name.strip(),
-            "town": (row.get("town") or "").strip(),
-            "industry": (row.get("industry") or "").strip(),
-            "main_tier": (row.get("main_tier") or "").strip(),
-            "sub_tier": (row.get("sub_tier") or "").strip(),
         }
 
     return company_lookup

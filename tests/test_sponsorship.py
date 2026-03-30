@@ -39,8 +39,8 @@ class SponsorshipTests(unittest.TestCase):
     def test_load_lookup_and_match_company(self):
         csv_path = self.test_dir / "sponsors.csv"
         csv_path.write_text(
-            "Organisation,Town,Industry,Main Tier,Sub Tier,Status\n"
-            "Marshmallow Ltd,London,Computer,Worker (A),Skilled Worker,Active\n",
+            "company_name\n"
+            "Marshmallow Ltd\n",
             encoding="utf-8",
         )
 
@@ -58,10 +58,9 @@ class SponsorshipTests(unittest.TestCase):
 
         self.assertIn("marshmallow", lookup)
         self.assertTrue(enriched_jobs[0]["is_sponsor_licensed_employer"])
-        self.assertEqual("London", enriched_jobs[0]["sponsor_company_metadata"]["town"])
         self.assertEqual(
-            "Skilled Worker",
-            enriched_jobs[0]["sponsor_company_metadata"]["sub_tier"],
+            "Marshmallow Ltd",
+            enriched_jobs[0]["sponsor_company_metadata"]["company_name"],
         )
 
     def test_classify_sponsorship_statuses(self):
@@ -77,10 +76,6 @@ class SponsorshipTests(unittest.TestCase):
         lookup = {
             "palantir technologies uk": {
                 "company_name": "Palantir Technologies UK",
-                "town": "",
-                "industry": "",
-                "main_tier": "",
-                "sub_tier": "",
             }
         }
 
@@ -92,17 +87,9 @@ class SponsorshipTests(unittest.TestCase):
         lookup = {
             "dept personalised content": {
                 "company_name": "dept personalised content",
-                "town": "",
-                "industry": "",
-                "main_tier": "",
-                "sub_tier": "",
             },
             "dept uk holding": {
                 "company_name": "dept uk holding",
-                "town": "",
-                "industry": "",
-                "main_tier": "",
-                "sub_tier": "",
             },
         }
 
@@ -114,10 +101,6 @@ class SponsorshipTests(unittest.TestCase):
         lookup = {
             f"ion candidate {index}": {
                 "company_name": f"ion candidate {index}",
-                "town": "",
-                "industry": "",
-                "main_tier": "",
-                "sub_tier": "",
             }
             for index in range(6)
         }
@@ -125,6 +108,8 @@ class SponsorshipTests(unittest.TestCase):
         metadata = resolve_sponsor_company_metadata("ion", lookup)
 
         self.assertEqual({}, metadata)
+
+    def test_classify_sponsorship_status_yes_and_implied_no(self):
         self.assertEqual(
             "explicit_yes",
             classify_sponsorship_status(

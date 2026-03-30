@@ -1,65 +1,37 @@
 import argparse
 
-from storage import create_storage
-from target_config import load_configured_targets
+from target_config import load_configured_target_details
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(description="Manage scraper targets.")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    list_parser = subparsers.add_parser("list", help="List configured targets.")
-    list_parser.add_argument("source_type", nargs="?", help="Optional source filter.")
-
-    add_parser = subparsers.add_parser("add", help="Add or enable a target.")
-    add_parser.add_argument(
-        "source_type", choices=["ashby", "greenhouse", "lever", "nextjs"]
+    parser = argparse.ArgumentParser(
+        description="Inspect the effective scraper targets loaded from config."
     )
-    add_parser.add_argument("target_value")
-
-    disable_parser = subparsers.add_parser("disable", help="Disable a target.")
-    disable_parser.add_argument(
-        "source_type", choices=["ashby", "greenhouse", "lever", "nextjs"]
-    )
-    disable_parser.add_argument("target_value")
-
-    enable_parser = subparsers.add_parser("enable", help="Enable a target.")
-    enable_parser.add_argument(
-        "source_type", choices=["ashby", "greenhouse", "lever", "nextjs"]
-    )
-    enable_parser.add_argument("target_value")
-
+    parser.add_argument("source_type", nargs="?", help="Optional source filter.")
     return parser
 
 
 def main():
     parser = build_parser()
     args = parser.parse_args()
+    details = load_configured_target_details()
 
-    storage = create_storage()
-    storage.ensure_schema()
-    storage.seed_targets(load_configured_targets())
+    valid_sources = set(details)
+    if args.source_type and args.source_type not in valid_sources:
+        parser.error(
+            f"source_type must be one of: {', '.join(sorted(valid_sources))}"
+        )
 
-    if args.command == "list":
-        rows = storage.list_targets(args.source_type)
-        for row in rows:
-            status = "enabled" if row["enabled"] else "disabled"
-            print(f"{row['source_type']}: {row['target_value']} ({status})")
-        return
-
-    if args.command == "add":
-        storage.upsert_target(args.source_type, args.target_value, enabled=1)
-        print(f"Added {args.source_type}: {args.target_value}")
-        return
-
-    if args.command == "disable":
-        storage.set_target_enabled(args.source_type, args.target_value, enabled=0)
-        print(f"Disabled {args.source_type}: {args.target_value}")
-        return
-
-    if args.command == "enable":
-        storage.set_target_enabled(args.source_type, args.target_value, enabled=1)
-        print(f"Enabled {args.source_type}: {args.target_value}")
+    selected_sources = [args.source_type] if args.source_type else sorted(details)
+    for source_type in selected_sources:
+        payload = details[source_type]
+        source_name = payload["source"].replace("_", " ")
+        source_path = f" [{payload['path']}]" if payload.get("path") else ""
+        print(f"{source_type} ({source_name}{source_path})")
+        for value in payload["values"]:
+            print(f"  - {value}")
+        if not payload["values"]:
+            print("  - <none>")
 
 
 if __name__ == "__main__":

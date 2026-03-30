@@ -1,55 +1,51 @@
 import os
 
 from ashby_scraper import collect_jobs as collect_ashby_jobs
+from digest import build_digest_bodies
 from emailer import send_email
 from greenhouse_scraper import collect_jobs as collect_greenhouse_jobs
 from lever_scraper import collect_jobs as collect_lever_jobs
 from nextjs_scraper import collect_jobs as collect_nextjs_jobs
 from recipient_profiles import load_recipient_profiles
+from ranking import rank_jobs
 from scrape_diagnostics import ScrapeDiagnostics
-from semantic_matching import rank_jobs
 from sponsorship import enrich_jobs, load_sponsor_company_lookup
 from storage import create_storage
 from target_config import load_configured_targets
-from utils import build_digest_bodies
 
 
 def sponsor_aware_profiles(recipient_profiles):
-    return any(
-        profile.get("care_about_sponsorship", False)
-        or profile.get("use_sponsor_lookup", False)
-        for profile in recipient_profiles
-    )
+    return any(profile.get("use_sponsor_lookup", False) for profile in recipient_profiles)
 
 
-def collect_all_jobs(storage, diagnostics):
+def collect_all_jobs(targets, diagnostics):
     seen_urls = set()
     candidates = []
     candidates.extend(
         collect_ashby_jobs(
             seen_urls,
-            storage.load_targets("ashby"),
+            targets["ashby"],
             diagnostics=diagnostics,
         )
     )
     candidates.extend(
         collect_greenhouse_jobs(
             seen_urls,
-            storage.load_targets("greenhouse"),
+            targets["greenhouse"],
             diagnostics=diagnostics,
         )
     )
     candidates.extend(
         collect_lever_jobs(
             seen_urls,
-            storage.load_targets("lever"),
+            targets["lever"],
             diagnostics=diagnostics,
         )
     )
     candidates.extend(
         collect_nextjs_jobs(
             seen_urls,
-            storage.load_targets("nextjs"),
+            targets["nextjs"],
             diagnostics=diagnostics,
         )
     )
@@ -57,10 +53,7 @@ def collect_all_jobs(storage, diagnostics):
 
 
 def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostics):
-    seen_url_sets = storage.load_seen_url_sets(recipient_profile["id"])
-    seen_urls = (
-        seen_url_sets["recipient_seen_urls"] | seen_url_sets["legacy_seen_urls"]
-    )
+    seen_urls = storage.load_seen_urls(recipient_profile["id"])
     ranked_jobs, ranking_stats = rank_jobs(
         candidates,
         recipient_profile,
@@ -72,8 +65,7 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
         {
             **ranking_stats,
             "unseen_jobs": len(unseen_jobs),
-            "recipient_seen_urls": len(seen_url_sets["recipient_seen_urls"]),
-            "legacy_seen_urls": len(seen_url_sets["legacy_seen_urls"]),
+            "recipient_seen_urls": len(seen_urls),
         },
     )
     return unseen_jobs
@@ -91,7 +83,6 @@ def send_digest(recipient_profile, jobs):
 
 def initialize_storage(storage):
     storage.ensure_schema()
-    storage.seed_targets(load_configured_targets())
 
 
 def require_database_in_github_actions():
@@ -106,6 +97,7 @@ def main():
 
     storage = create_storage()
     initialize_storage(storage)
+    targets = load_configured_targets()
     diagnostics = ScrapeDiagnostics(
         enabled=os.getenv("JOB_SCRAPER_DIAGNOSTICS", "1") != "0"
     )
@@ -118,7 +110,7 @@ def main():
             "company lookup data was loaded."
         )
 
-    candidates = collect_all_jobs(storage, diagnostics)
+    candidates = collect_all_jobs(targets, diagnostics)
     enriched_candidates = enrich_jobs(candidates, sponsor_company_lookup)
 
     for recipient_profile in recipient_profiles:

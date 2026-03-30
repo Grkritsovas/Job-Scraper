@@ -59,28 +59,59 @@ def load_list_config(
     example_file_name=None,
     default_values=None,
 ):
+    resolved = resolve_list_config(
+        env_name,
+        local_file_name=local_file_name,
+        example_file_name=example_file_name,
+        default_values=default_values,
+    )
+    return resolved["values"]
+
+
+def resolve_list_config(
+    env_name,
+    local_file_name=None,
+    example_file_name=None,
+    default_values=None,
+):
     env_value = os.getenv(env_name, "").strip()
     if env_value:
         try:
             parsed = json.loads(env_value)
             if isinstance(parsed, list):
-                return _dedupe(parsed)
+                return {
+                    "values": _dedupe(parsed),
+                    "source": "environment",
+                    "path": env_name,
+                }
         except json.JSONDecodeError:
-            return _dedupe(
-                item.strip()
-                for item in env_value.split(",")
-                if item.strip()
-            )
+            return {
+                "values": _dedupe(
+                    item.strip()
+                    for item in env_value.split(",")
+                    if item.strip()
+                ),
+                "source": "environment",
+                "path": env_name,
+            }
 
     candidate_paths = []
     if local_file_name:
-        candidate_paths.append(BASE_DIR / local_file_name)
+        candidate_paths.append(("local_file", BASE_DIR / local_file_name))
     if example_file_name:
-        candidate_paths.append(EXAMPLES_DIR / example_file_name)
+        candidate_paths.append(("example_file", EXAMPLES_DIR / example_file_name))
 
-    for candidate_path in candidate_paths:
+    for source_name, candidate_path in candidate_paths:
         parsed = _load_json_from_file(candidate_path)
         if isinstance(parsed, list):
-            return _dedupe(parsed)
+            return {
+                "values": _dedupe(parsed),
+                "source": source_name,
+                "path": str(candidate_path),
+            }
 
-    return _dedupe(default_values or [])
+    return {
+        "values": _dedupe(default_values or []),
+        "source": "default",
+        "path": "",
+    }

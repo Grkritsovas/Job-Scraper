@@ -69,37 +69,13 @@ class SemanticMatchingTests(unittest.TestCase):
         )
         self.assertEqual("title_commercial", reason)
 
-    def test_get_hard_filter_reason_uses_configured_experience_cap(self):
+    def test_get_hard_filter_reason_rejects_two_plus_years_for_junior_pipeline(self):
         reason = get_hard_filter_reason(
             make_job(description="Requires 2+ years of experience in Python."),
-            max_years_experience=1,
         )
         self.assertEqual("experience", reason)
 
-        reason = get_hard_filter_reason(
-            make_job(description="Requires 2+ years of experience in Python."),
-            max_years_experience=2,
-        )
-        self.assertIsNone(reason)
-
-    def test_recipient_with_sponsorship_concern_rejects_explicit_no(self):
-        jobs = [
-            make_job(
-                url="https://example.com/no",
-                sponsorship_status="explicit_no",
-            )
-        ]
-        recipient_profile = {
-            "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
-            "min_top_score": 0.45,
-            "care_about_sponsorship": True,
-            "use_sponsor_lookup": False,
-        }
-
-        ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
-        self.assertEqual([], ranked_jobs)
-
-    def test_recipient_without_sponsorship_concern_keeps_explicit_no(self):
+    def test_sponsorship_status_is_info_only_for_ranking(self):
         jobs = [
             make_job(
                 url="https://example.com/no",
@@ -115,31 +91,6 @@ class SemanticMatchingTests(unittest.TestCase):
 
         ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
         self.assertEqual(1, len(ranked_jobs))
-
-    def test_sponsor_lookup_boost_changes_ranking_order(self):
-        jobs = [
-            make_job(
-                url="https://example.com/unknown",
-                title="Backend Software Engineer",
-                sponsorship_status="unknown",
-                is_sponsor_licensed_employer=False,
-            ),
-            make_job(
-                url="https://example.com/licensed",
-                title="Backend Platform Engineer",
-                sponsorship_status="unknown",
-                is_sponsor_licensed_employer=True,
-            ),
-        ]
-        recipient_profile = {
-            "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
-            "min_top_score": 0.45,
-            "care_about_sponsorship": True,
-            "use_sponsor_lookup": True,
-        }
-
-        ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
-        self.assertEqual("https://example.com/licensed", ranked_jobs[0]["url"])
 
     def test_recipient_specific_threshold_applies(self):
         jobs = [make_job(url="https://example.com/borderline", description="borderline_fit")]
@@ -173,7 +124,7 @@ class SemanticMatchingTests(unittest.TestCase):
         jobs = [
             make_job(
                 url="https://example.com/high-salary",
-                description="Salary range: £51,000 - £80,000 plus benefits.",
+                description="Salary range: GBP 51,000 - GBP 80,000 plus benefits.",
             )
         ]
         recipient_profile = {
@@ -193,7 +144,7 @@ class SemanticMatchingTests(unittest.TestCase):
         jobs = [
             make_job(
                 url="https://example.com/high-salary-allowed",
-                description="Salary range: £51,000 - £80,000 plus benefits.",
+                description="Salary range: GBP 51,000 - GBP 80,000 plus benefits.",
             )
         ]
         recipient_profile = {

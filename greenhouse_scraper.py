@@ -3,15 +3,11 @@ from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 
+from company_names import normalize_company_name
+from descriptions import HEADERS, get_visible_text
 from job_urls import sanitize_job_url
+from locations import format_locations, is_uk_location
 from target_config import load_greenhouse_targets
-from utils import (
-    HEADERS,
-    format_locations,
-    get_visible_text,
-    is_uk_location,
-    normalize_company_name,
-)
 
 
 GREENHOUSE_API_URL = "https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true"
