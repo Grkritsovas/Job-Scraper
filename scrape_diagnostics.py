@@ -4,6 +4,7 @@ class ScrapeDiagnostics:
         self.target_summaries = []
         self.recipient_summaries = []
         self.description_fallbacks = []
+        self.url_rejections = []
 
     def record_target_summary(self, source, target, summary):
         if not self.enabled:
@@ -87,4 +88,21 @@ class ScrapeDiagnostics:
             f"html={1 if looks_like_html else 0} "
             f"title={title or '-'} "
             f"url={url or '-'}"
+        )
+
+    def record_url_rejection(self, source, target, title, raw_url):
+        if not self.enabled:
+            return
+
+        payload = {
+            "source": source,
+            "target": target,
+            "title": title,
+            "raw_url": raw_url,
+        }
+        self.url_rejections.append(payload)
+        print(
+            f"[url_reject:{source}:{target}] "
+            f"title={title or '-'} "
+            f"raw={raw_url or '-'}"
         )

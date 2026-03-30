@@ -56,6 +56,28 @@ class JobUrlTests(unittest.TestCase):
             cleaned,
         )
 
+    def test_greenhouse_accepts_cockroach_company_hosted_job_links(self):
+        cleaned = sanitize_job_url(
+            "https://www.cockroachlabs.com/careers/job/?gh_jid=7550343&utm_source=mail",
+            source="greenhouse",
+        )
+
+        self.assertEqual(
+            "https://www.cockroachlabs.com/careers/job/?gh_jid=7550343",
+            cleaned,
+        )
+
+    def test_greenhouse_accepts_tower_company_hosted_job_links(self):
+        cleaned = sanitize_job_url(
+            "https://www.tower-research.com/open-positions/?gh_jid=7719159&utm_source=mail",
+            source="greenhouse",
+        )
+
+        self.assertEqual(
+            "https://www.tower-research.com/open-positions/?gh_jid=7719159",
+            cleaned,
+        )
+
     def test_sanitize_job_url_strips_tracking_parameters(self):
         cleaned = sanitize_job_url(
             "https://jobs.ashbyhq.com/multiverse/123?utm_source=newsletter&fbclid=test",

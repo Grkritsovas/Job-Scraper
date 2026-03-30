@@ -56,6 +56,36 @@ class GreenhouseScraperTests(unittest.TestCase):
             get_greenhouse_job_url({"absolute_url": "/embed/job_app?token=123"}),
         )
 
+    @patch("greenhouse_scraper.get_greenhouse_description")
+    @patch("greenhouse_scraper.fetch_greenhouse_jobs")
+    def test_collect_board_jobs_accepts_company_hosted_gh_jid_urls(
+        self,
+        mock_fetch_greenhouse_jobs,
+        mock_get_greenhouse_description,
+    ):
+        mock_fetch_greenhouse_jobs.return_value = [
+            {
+                "title": "Account Executive, UK",
+                "absolute_url": "https://stripe.com/jobs/search?gh_jid=7451366",
+                "location": {"name": "London, United Kingdom"},
+                "offices": [],
+                "content": "<p>Sell things.</p>",
+            }
+        ]
+        mock_get_greenhouse_description.return_value = {
+            "description": "Sell things.",
+            "status": "job_content",
+            "looks_like_html": False,
+        }
+
+        jobs = collect_board_jobs("Stripe", set())
+
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(
+            "https://stripe.com/jobs/search?gh_jid=7451366",
+            jobs[0]["url"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

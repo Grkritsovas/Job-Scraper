@@ -119,8 +119,9 @@ def collect_board_jobs(board_token, seen_urls, diagnostics=None):
 
     for job in jobs:
         title = job.get("title", "")
+        raw_url = get_greenhouse_job_url(job)
         url = sanitize_job_url(
-            get_greenhouse_job_url(job),
+            raw_url,
             source="greenhouse",
             target_value=board_token,
         )
@@ -135,6 +136,13 @@ def collect_board_jobs(board_token, seen_urls, diagnostics=None):
         counts["uk_jobs"] += 1
 
         if not url:
+            if diagnostics is not None:
+                diagnostics.record_url_rejection(
+                    "greenhouse",
+                    board_token,
+                    title.strip(),
+                    raw_url,
+                )
             continue
         counts["url_ok_jobs"] += 1
 
