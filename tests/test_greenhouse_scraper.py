@@ -1,7 +1,11 @@
 import unittest
 from unittest.mock import patch
 
-from greenhouse_scraper import collect_board_jobs, normalize_board_token
+from greenhouse_scraper import (
+    collect_board_jobs,
+    get_greenhouse_job_url,
+    normalize_board_token,
+)
 
 
 class GreenhouseScraperTests(unittest.TestCase):
@@ -45,6 +49,12 @@ class GreenhouseScraperTests(unittest.TestCase):
 
         self.assertEqual(1, len(jobs))
         self.assertEqual("https://boards.greenhouse.io/ritual/jobs/123", jobs[0]["url"])
+
+    def test_relative_greenhouse_job_url_is_expanded(self):
+        self.assertEqual(
+            "https://boards.greenhouse.io/embed/job_app?token=123",
+            get_greenhouse_job_url({"absolute_url": "/embed/job_app?token=123"}),
+        )
 
 
 if __name__ == "__main__":

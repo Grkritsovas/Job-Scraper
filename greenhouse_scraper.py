@@ -1,5 +1,5 @@
 import html
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 
@@ -90,6 +90,17 @@ def get_greenhouse_description(job):
     }
 
 
+def get_greenhouse_job_url(job):
+    raw_url = (job.get("absolute_url") or "").strip()
+    if not raw_url:
+        return ""
+
+    if raw_url.startswith("/"):
+        return urljoin("https://boards.greenhouse.io", raw_url)
+
+    return raw_url
+
+
 def collect_board_jobs(board_token, seen_urls, diagnostics=None):
     jobs = fetch_greenhouse_jobs(board_token)
     company_name = normalize_company_name(board_token)
@@ -109,7 +120,7 @@ def collect_board_jobs(board_token, seen_urls, diagnostics=None):
     for job in jobs:
         title = job.get("title", "")
         url = sanitize_job_url(
-            job.get("absolute_url", ""),
+            get_greenhouse_job_url(job),
             source="greenhouse",
             target_value=board_token,
         )
