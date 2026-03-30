@@ -187,6 +187,25 @@ class SemanticMatchingTests(unittest.TestCase):
         ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
         self.assertEqual(1, len(ranked_jobs))
 
+    def test_html_like_description_is_rejected_before_ranking(self):
+        jobs = [
+            make_job(
+                url="https://example.com/html",
+                description="<html><body>role page</body></html>",
+                description_looks_like_html=True,
+                description_status="raw_html_fallback",
+            )
+        ]
+        recipient_profile = {
+            "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
+            "min_top_score": 0.43,
+            "care_about_sponsorship": False,
+            "use_sponsor_lookup": False,
+        }
+
+        ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
+        self.assertEqual([], ranked_jobs)
+
 
 if __name__ == "__main__":
     unittest.main()

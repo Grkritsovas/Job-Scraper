@@ -380,7 +380,9 @@ def build_digest_bodies(jobs, recipient_profile, max_jobs_per_email=20):
                 recipient_profile.get("care_about_sponsorship", False)
                 or recipient_profile.get("use_sponsor_lookup", False)
             ):
-                lines.append(f"  {format_sponsorship_summary(job)}")
+                sponsorship_summary = format_sponsorship_summary(job)
+                if sponsorship_summary:
+                    lines.append(f"  {sponsorship_summary}")
             lines.append(job["url"])
         company_blocks.append((len(company_jobs), "\n".join(lines)))
 

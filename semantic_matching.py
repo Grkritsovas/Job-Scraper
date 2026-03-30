@@ -15,7 +15,7 @@ from utils import is_uk_location, passes_experience_filter
 EMBEDDING_MODEL_NAME = os.getenv(
     "JOB_SCRAPER_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
 )
-DEFAULT_MIN_PROFILE_SCORE = float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.45"))
+DEFAULT_MIN_PROFILE_SCORE = float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.43"))
 SENIORITY_PENALTY_FLOOR = 0.35
 DEFAULT_SENIORITY_PENALTY_WEIGHT = float(
     os.getenv("JOB_SCRAPER_SENIORITY_PENALTY_WEIGHT", "0.18")
@@ -338,6 +338,12 @@ def passes_hard_filters(job):
         return False
 
     if title_has_hard_reject_term(title, HARD_ELIGIBILITY_TITLE_TERMS):
+        return False
+
+    if job.get("description_looks_like_html", False):
+        return False
+
+    if job.get("description_status") == "raw_html_fallback":
         return False
 
     if not is_uk_location(locations):

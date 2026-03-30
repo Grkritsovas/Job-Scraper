@@ -222,24 +222,7 @@ def enrich_jobs(jobs, sponsor_company_lookup):
 
 def format_sponsorship_summary(job):
     status = (job.get("sponsorship_status") or "unknown").replace("_", " ")
-    parts = [status]
-    metadata = job.get("sponsor_company_metadata") or {}
+    if status == "unknown":
+        return ""
 
-    if job.get("is_sponsor_licensed_employer"):
-        employer_details = []
-        tier = metadata.get("sub_tier") or metadata.get("main_tier")
-        town = metadata.get("town")
-        if tier:
-            employer_details.append(tier)
-        if town:
-            employer_details.append(town)
-
-        if employer_details:
-            parts.append(
-                "sponsor-licensed employer "
-                f"({', '.join(detail for detail in employer_details if detail)})"
-            )
-        else:
-            parts.append("sponsor-licensed employer")
-
-    return "Sponsorship: " + ", ".join(parts)
+    return "Sponsorship: " + status

@@ -77,7 +77,7 @@ Example shape:
     "email": "you@example.com",
     "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
     "semantic_profile_texts": {},
-    "min_top_score": 0.45,
+    "min_top_score": 0.43,
     "negative_profile_texts": [
       "Senior or staff level role requiring multiple years of industry experience, technical leadership, mentoring, architecture ownership, and proven delivery of production systems at scale."
     ],
@@ -96,7 +96,7 @@ Example shape:
       "marketing_assistant": "Junior marketing and communications professional with experience supporting marketing teams in structured business environments. Best aligned with early-career marketing assistant, communications support, campaign operations, coordination, and content-support roles.",
       "ai_ml": "Early-career AI and data-focused graduate profile. Best aligned with junior applied AI, machine learning, and analytical support roles where experimentation, modelling fundamentals, and practical Python-based ML work matter more than production ownership."
     },
-    "min_top_score": 0.45,
+    "min_top_score": 0.43,
     "negative_profile_texts": [
       "Senior or highly autonomous role requiring proven commercial experience, independent ownership, strategic responsibility, or delivery in real production or business environments. Includes roles expecting multiple years of experience, leadership, mentoring, end-to-end ownership, operational accountability, or advanced specialization."
     ],
