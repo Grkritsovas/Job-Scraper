@@ -1,5 +1,5 @@
 import re
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 TRACKING_PARAM_NAMES = {
@@ -35,7 +35,12 @@ def sanitize_job_url(url, source, target_value=""):
     if not allowed_hosts:
         return ""
 
-    return _sanitize_url(url, allowed_hosts=allowed_hosts)
+    allow_greenhouse_external_host = source == "greenhouse"
+    return _sanitize_url(
+        url,
+        allowed_hosts=allowed_hosts,
+        allow_greenhouse_external_host=allow_greenhouse_external_host,
+    )
 
 
 def get_allowed_job_hosts(source, target_value=""):
@@ -65,7 +70,7 @@ def _get_nextjs_target_host_variants(target_url):
     return {host, f"www.{host}"}
 
 
-def _sanitize_url(url, allowed_hosts=None):
+def _sanitize_url(url, allowed_hosts=None, allow_greenhouse_external_host=False):
     if not isinstance(url, str):
         return ""
 
@@ -90,7 +95,12 @@ def _sanitize_url(url, allowed_hosts=None):
         return ""
 
     if allowed_hosts is not None and host not in allowed_hosts:
-        return ""
+        if not (
+            allow_greenhouse_external_host
+            and _looks_like_greenhouse_hosted_job_link(parsed.query)
+        ):
+            return ""
+
 
     path = re.sub(r"/{2,}", "/", parsed.path or "/")
     query = _strip_tracking_params(parsed.query)
@@ -124,3 +134,12 @@ def _strip_tracking_params(query_string):
         kept_params.append((name, value))
 
     return urlencode(kept_params, doseq=True)
+
+
+def _looks_like_greenhouse_hosted_job_link(query_string):
+    if not query_string:
+        return False
+
+    query_params = parse_qs(query_string, keep_blank_values=True)
+    gh_job_ids = query_params.get("gh_jid") or query_params.get("gh_src")
+    return bool(gh_job_ids)

@@ -85,6 +85,7 @@ Example shape:
     "preferred_salary_max_gbp": 45000,
     "salary_hard_cap_gbp": 70000,
     "salary_penalty_max": 0.35,
+    "max_years_experience": 1,
     "care_about_sponsorship": false,
     "use_sponsor_lookup": false
   },
@@ -104,6 +105,7 @@ Example shape:
     "preferred_salary_max_gbp": 45000,
     "salary_hard_cap_gbp": 70000,
     "salary_penalty_max": 0.35,
+    "max_years_experience": 1,
     "care_about_sponsorship": true,
     "use_sponsor_lookup": true
   }
@@ -128,6 +130,7 @@ Supported recipient fields:
 - `preferred_salary_max_gbp`
 - `salary_hard_cap_gbp`
 - `salary_penalty_max`
+- `max_years_experience`
 - `care_about_sponsorship`
 - `use_sponsor_lookup`
 
@@ -138,6 +141,7 @@ Supported recipient fields:
 `preferred_salary_max_gbp` is where salary mismatch penalty begins.
 `salary_hard_cap_gbp` is where that penalty reaches its maximum.
 `salary_penalty_max` controls how much score can be deducted for salary mismatch.
+`max_years_experience` is the highest explicit years-of-experience requirement the recipient is willing to allow from the job description. Set it to `null` to disable experience-based hard rejection.
 
 If you use a custom semantic profile id such as `marketing_assistant` and do not provide
 `semantic_profile_texts`, the app now falls back to a simple generated profile text so the run

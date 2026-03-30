@@ -15,20 +15,25 @@ HEADERS = {
 MIN_VISIBLE_TEXT_LENGTH = 200
 
 EXPERIENCE_PATTERNS = [
-    r"\b[2-9]\+\s*(?:years?|yrs?|yoe)\b",
-    r"\b10\+\s*(?:years?|yrs?|yoe)\b",
-    r"\bat least\s+[2-9]\s*(?:years?|yrs?|yoe)\b",
-    r"\bat least\s+10\s*(?:years?|yrs?|yoe)\b",
-    r"\bminimum of\s+[2-9]\s*(?:years?|yrs?|yoe)\b",
-    r"\bminimum of\s+10\s*(?:years?|yrs?|yoe)\b",
-    r"\bminimum\s+[2-9]\s*(?:years?|yrs?|yoe)\b",
-    r"\bminimum\s+10\s*(?:years?|yrs?|yoe)\b",
-    r"\b[2-9]\s*-\s*\d+\s*(?:years?|yrs?|yoe)\b",
-    r"\b10\s*-\s*\d+\s*(?:years?|yrs?|yoe)\b",
-    r"\b[2-9]\s*to\s*\d+\s*(?:years?|yrs?|yoe)\b",
-    r"\b10\s*to\s*\d+\s*(?:years?|yrs?|yoe)\b",
-    r"\b[2-9]\s*(?:years?|yrs?|yoe)\s+(?:of\s+)?experience\b",
-    r"\b10\s*(?:years?|yrs?|yoe)\s+(?:of\s+)?experience\b",
+    re.compile(r"\b(\d+)\+\s*(?:years?|yrs?|yoe)\b", flags=re.IGNORECASE),
+    re.compile(r"\bat least\s+(\d+)\s*(?:years?|yrs?|yoe)\b", flags=re.IGNORECASE),
+    re.compile(
+        r"\bminimum of\s+(\d+)\s*(?:years?|yrs?|yoe)\b",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(r"\bminimum\s+(\d+)\s*(?:years?|yrs?|yoe)\b", flags=re.IGNORECASE),
+    re.compile(
+        r"\b(\d+)\s*-\s*(\d+)\s*(?:years?|yrs?|yoe)\b",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(\d+)\s*to\s*(\d+)\s*(?:years?|yrs?|yoe)\b",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(\d+)\s*(?:years?|yrs?|yoe)\s+(?:of\s+)?experience\b",
+        flags=re.IGNORECASE,
+    ),
 ]
 
 UK_LOCATION_TERMS = {
@@ -289,13 +294,31 @@ def _contains_location_term(location_text, location_term):
     return re.search(pattern, location_text) is not None
 
 
-def passes_experience_filter(description):
+def extract_required_experience_years(description):
+    if not description:
+        return []
+
+    required_years = []
+    for pattern in EXPERIENCE_PATTERNS:
+        for match in pattern.finditer(description):
+            groups = [group for group in match.groups() if group]
+            if not groups:
+                continue
+            required_years.append(int(groups[0]))
+
+    return required_years
+
+
+def passes_experience_filter(description, max_years_experience=1):
     if not description:
         return False
 
+    if max_years_experience is None:
+        return True
+
     return not any(
-        re.search(pattern, description, flags=re.IGNORECASE)
-        for pattern in EXPERIENCE_PATTERNS
+        years_required > max_years_experience
+        for years_required in extract_required_experience_years(description)
     )
 
 

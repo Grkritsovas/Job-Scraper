@@ -69,6 +69,19 @@ class SemanticMatchingTests(unittest.TestCase):
         )
         self.assertEqual("title_commercial", reason)
 
+    def test_get_hard_filter_reason_uses_configured_experience_cap(self):
+        reason = get_hard_filter_reason(
+            make_job(description="Requires 2+ years of experience in Python."),
+            max_years_experience=1,
+        )
+        self.assertEqual("experience", reason)
+
+        reason = get_hard_filter_reason(
+            make_job(description="Requires 2+ years of experience in Python."),
+            max_years_experience=2,
+        )
+        self.assertIsNone(reason)
+
     def test_recipient_with_sponsorship_concern_rejects_explicit_no(self):
         jobs = [
             make_job(

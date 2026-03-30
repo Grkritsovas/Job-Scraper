@@ -327,11 +327,11 @@ def has_eligibility_mismatch(description):
     )
 
 
-def passes_hard_filters(job):
-    return get_hard_filter_reason(job) is None
+def passes_hard_filters(job, max_years_experience=1):
+    return get_hard_filter_reason(job, max_years_experience) is None
 
 
-def get_hard_filter_reason(job):
+def get_hard_filter_reason(job, max_years_experience=1):
     title = job.get("title", "")
     description = job.get("description", "")
     locations = job.get("locations") or [job.get("location", "")]
@@ -354,7 +354,10 @@ def get_hard_filter_reason(job):
     if has_eligibility_mismatch(description):
         return "eligibility"
 
-    if not passes_experience_filter(description):
+    if not passes_experience_filter(
+        description,
+        max_years_experience,
+    ):
         return "experience"
 
     return None
@@ -499,7 +502,10 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
     hard_filter_reasons = Counter()
 
     for job in jobs:
-        hard_filter_reason = get_hard_filter_reason(job)
+        hard_filter_reason = get_hard_filter_reason(
+            job,
+            recipient_profile.get("max_years_experience", 1),
+        )
         if hard_filter_reason is not None:
             stats["hard_filtered_jobs"] += 1
             hard_filter_reasons[hard_filter_reason] += 1

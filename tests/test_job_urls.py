@@ -45,6 +45,17 @@ class JobUrlTests(unittest.TestCase):
             cleaned,
         )
 
+    def test_greenhouse_accepts_company_hosted_job_links_with_gh_jid(self):
+        cleaned = sanitize_job_url(
+            "https://stripe.com/jobs/search?gh_jid=7532733&utm_source=mail",
+            source="greenhouse",
+        )
+
+        self.assertEqual(
+            "https://stripe.com/jobs/search?gh_jid=7532733",
+            cleaned,
+        )
+
     def test_sanitize_job_url_strips_tracking_parameters(self):
         cleaned = sanitize_job_url(
             "https://jobs.ashbyhq.com/multiverse/123?utm_source=newsletter&fbclid=test",
