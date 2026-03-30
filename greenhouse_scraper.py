@@ -15,6 +15,7 @@ from utils import (
 
 
 GREENHOUSE_API_URL = "https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true"
+GREENHOUSE_FETCH_ALL_TOKENS = {"ritual"}
 
 
 def normalize_board_token(value):
@@ -115,7 +116,10 @@ def collect_board_jobs(board_token, seen_urls, diagnostics=None):
         locations = get_greenhouse_locations(job)
         location_candidates = [*locations, title]
 
-        if not is_uk_location(location_candidates):
+        if (
+            board_token.lower() not in GREENHOUSE_FETCH_ALL_TOKENS
+            and not is_uk_location(location_candidates)
+        ):
             continue
         counts["uk_jobs"] += 1
 

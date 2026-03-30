@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import patch
 
-from greenhouse_scraper import normalize_board_token
+from greenhouse_scraper import collect_board_jobs, normalize_board_token
 
 
 class GreenhouseScraperTests(unittest.TestCase):
@@ -17,6 +18,33 @@ class GreenhouseScraperTests(unittest.TestCase):
             "dept",
             normalize_board_token("https://job-boards.greenhouse.io/dept?keyword=London"),
         )
+
+    @patch("greenhouse_scraper.get_greenhouse_description")
+    @patch("greenhouse_scraper.fetch_greenhouse_jobs")
+    def test_ritual_board_can_accept_remote_jobs_without_uk_location(
+        self,
+        mock_fetch_greenhouse_jobs,
+        mock_get_greenhouse_description,
+    ):
+        mock_fetch_greenhouse_jobs.return_value = [
+            {
+                "title": "Software Engineer",
+                "absolute_url": "https://boards.greenhouse.io/ritual/jobs/123",
+                "location": {"name": "Remote"},
+                "offices": [],
+                "content": "<p>Build things.</p>",
+            }
+        ]
+        mock_get_greenhouse_description.return_value = {
+            "description": "Build things.",
+            "status": "job_content",
+            "looks_like_html": False,
+        }
+
+        jobs = collect_board_jobs("ritual", set())
+
+        self.assertEqual(1, len(jobs))
+        self.assertEqual("https://boards.greenhouse.io/ritual/jobs/123", jobs[0]["url"])
 
 
 if __name__ == "__main__":
