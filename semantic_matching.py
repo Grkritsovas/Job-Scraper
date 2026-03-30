@@ -1,5 +1,6 @@
 import os
 import re
+from collections import Counter
 
 from filters import (
     AUTHORIZATION_MISMATCH_PATTERNS,
@@ -327,32 +328,36 @@ def has_eligibility_mismatch(description):
 
 
 def passes_hard_filters(job):
+    return get_hard_filter_reason(job) is None
+
+
+def get_hard_filter_reason(job):
     title = job.get("title", "")
     description = job.get("description", "")
     locations = job.get("locations") or [job.get("location", "")]
 
     if title_has_hard_reject_term(title, HARD_SENIORITY_TERMS):
-        return False
+        return "title_seniority"
 
     if title_has_hard_reject_term(title, HARD_COMMERCIAL_TERMS):
-        return False
+        return "title_commercial"
 
     if title_has_hard_reject_term(title, HARD_ELIGIBILITY_TITLE_TERMS):
-        return False
+        return "title_eligibility"
 
     if not is_uk_location(locations):
-        return False
+        return "location"
 
     if has_authorization_mismatch(description):
-        return False
+        return "authorization"
 
     if has_eligibility_mismatch(description):
-        return False
+        return "eligibility"
 
     if not passes_experience_filter(description):
-        return False
+        return "experience"
 
-    return True
+    return None
 
 
 def score_to_percent(score):
@@ -489,11 +494,15 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
         "sponsorship_rejected_jobs": 0,
         "below_threshold_jobs": 0,
         "ranked_jobs": 0,
+        "hard_filter_reasons": {},
     }
+    hard_filter_reasons = Counter()
 
     for job in jobs:
-        if not passes_hard_filters(job):
+        hard_filter_reason = get_hard_filter_reason(job)
+        if hard_filter_reason is not None:
             stats["hard_filtered_jobs"] += 1
+            hard_filter_reasons[hard_filter_reason] += 1
             continue
 
         score_data = matcher.score_description(
@@ -542,6 +551,7 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
         ),
         reverse=True,
     )
+    stats["hard_filter_reasons"] = dict(hard_filter_reasons)
     if return_stats:
         return ranked_jobs, stats
     return ranked_jobs

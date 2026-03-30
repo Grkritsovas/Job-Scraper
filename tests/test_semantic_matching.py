@@ -1,6 +1,6 @@
 import unittest
 
-from semantic_matching import build_profile_specs, rank_jobs
+from semantic_matching import build_profile_specs, get_hard_filter_reason, rank_jobs
 
 
 class FakeMatcher:
@@ -62,6 +62,12 @@ class SemanticMatchingTests(unittest.TestCase):
         self.assertEqual("marketing_assistant", specs[0]["id"])
         self.assertEqual("Marketing Assistant", specs[0]["label"])
         self.assertIn("entry-level marketing assistant roles", specs[0]["text"])
+
+    def test_get_hard_filter_reason_identifies_commercial_title(self):
+        reason = get_hard_filter_reason(
+            make_job(title="Account Executive", description="strong_fit")
+        )
+        self.assertEqual("title_commercial", reason)
 
     def test_recipient_with_sponsorship_concern_rejects_explicit_no(self):
         jobs = [

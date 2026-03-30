@@ -33,6 +33,14 @@ class ScrapeDiagnostics:
 
         payload = {"recipient_id": recipient_id, **summary}
         self.recipient_summaries.append(payload)
+        hard_filter_reasons = payload.get("hard_filter_reasons") or {}
+        formatted_reasons = ",".join(
+            f"{reason}:{count}"
+            for reason, count in sorted(
+                hard_filter_reasons.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        ) or "-"
         print(
             f"[ranking:{recipient_id}] "
             f"input={payload.get('input_jobs', 0)} "
@@ -42,7 +50,8 @@ class ScrapeDiagnostics:
             f"ranked={payload.get('ranked_jobs', 0)} "
             f"unseen={payload.get('unseen_jobs', 0)} "
             f"recipient_seen={payload.get('recipient_seen_urls', 0)} "
-            f"legacy_seen={payload.get('legacy_seen_urls', 0)}"
+            f"legacy_seen={payload.get('legacy_seen_urls', 0)} "
+            f"hard_filter_reasons={formatted_reasons}"
         )
 
     def record_sponsor_lookup_summary(self, count):
