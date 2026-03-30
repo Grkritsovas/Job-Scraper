@@ -27,7 +27,17 @@ def load_json_config(
 ):
     env_value = os.getenv(env_name, "").strip()
     if env_value:
-        return json.loads(env_value)
+        try:
+            return json.loads(env_value)
+        except json.JSONDecodeError as exc:
+            lines = env_value.splitlines()
+            context_line = ""
+            if 1 <= exc.lineno <= len(lines):
+                context_line = lines[exc.lineno - 1]
+            raise RuntimeError(
+                f"Invalid JSON in {env_name} at line {exc.lineno}, column {exc.colno}: "
+                f"{exc.msg}. Context: {context_line}"
+            ) from exc
 
     candidate_paths = []
     if local_file_name:
