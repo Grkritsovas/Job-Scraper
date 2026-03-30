@@ -3,6 +3,7 @@ class ScrapeDiagnostics:
         self.enabled = enabled
         self.target_summaries = []
         self.recipient_summaries = []
+        self.description_fallbacks = []
 
     def record_target_summary(self, source, target, summary):
         if not self.enabled:
@@ -49,3 +50,32 @@ class ScrapeDiagnostics:
             return
 
         print(f"[sponsorship] sponsor_lookup_companies={count}")
+
+    def record_description_fallback(
+        self,
+        source,
+        target,
+        title,
+        url,
+        status,
+        looks_like_html,
+    ):
+        if not self.enabled:
+            return
+
+        payload = {
+            "source": source,
+            "target": target,
+            "title": title,
+            "url": url,
+            "status": status,
+            "looks_like_html": looks_like_html,
+        }
+        self.description_fallbacks.append(payload)
+        print(
+            f"[description_fallback:{source}:{target}] "
+            f"status={status} "
+            f"html={1 if looks_like_html else 0} "
+            f"title={title or '-'} "
+            f"url={url or '-'}"
+        )

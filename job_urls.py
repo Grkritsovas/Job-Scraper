@@ -17,7 +17,11 @@ TRACKING_PARAM_PREFIXES = ("utm_",)
 
 KNOWN_PLATFORM_HOSTS = {
     "ashby": {"jobs.ashbyhq.com"},
-    "greenhouse": {"job-boards.greenhouse.io", "job-boards.eu.greenhouse.io"},
+    "greenhouse": {
+        "boards.greenhouse.io",
+        "job-boards.greenhouse.io",
+        "job-boards.eu.greenhouse.io",
+    },
     "lever": {"jobs.lever.co"},
 }
 

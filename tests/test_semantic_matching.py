@@ -187,7 +187,7 @@ class SemanticMatchingTests(unittest.TestCase):
         ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
         self.assertEqual(1, len(ranked_jobs))
 
-    def test_html_like_description_is_rejected_before_ranking(self):
+    def test_html_like_description_can_still_rank(self):
         jobs = [
             make_job(
                 url="https://example.com/html",
@@ -204,7 +204,8 @@ class SemanticMatchingTests(unittest.TestCase):
         }
 
         ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
-        self.assertEqual([], ranked_jobs)
+        self.assertEqual(1, len(ranked_jobs))
+        self.assertTrue(ranked_jobs[0]["description_looks_like_html"])
 
 
 if __name__ == "__main__":

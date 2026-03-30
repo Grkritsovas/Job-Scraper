@@ -120,6 +120,15 @@ def collect_company_jobs(company, seen_urls, diagnostics=None):
         counts["description_ok_jobs"] += 1
         if description_info["looks_like_html"]:
             counts["html_like_descriptions"] += 1
+            if diagnostics is not None:
+                diagnostics.record_description_fallback(
+                    "ashby",
+                    company,
+                    title.strip(),
+                    url,
+                    description_info["status"],
+                    description_info["looks_like_html"],
+                )
 
         matches.append(
             {

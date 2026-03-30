@@ -340,12 +340,6 @@ def passes_hard_filters(job):
     if title_has_hard_reject_term(title, HARD_ELIGIBILITY_TITLE_TERMS):
         return False
 
-    if job.get("description_looks_like_html", False):
-        return False
-
-    if job.get("description_status") == "raw_html_fallback":
-        return False
-
     if not is_uk_location(locations):
         return False
 

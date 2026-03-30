@@ -149,6 +149,15 @@ def collect_site_jobs(site, seen_urls, diagnostics=None):
         counts["description_ok_jobs"] += 1
         if description_info["looks_like_html"]:
             counts["html_like_descriptions"] += 1
+            if diagnostics is not None:
+                diagnostics.record_description_fallback(
+                    "lever",
+                    site,
+                    title.strip(),
+                    url,
+                    description_info["status"],
+                    description_info["looks_like_html"],
+                )
 
         matches.append(
             {

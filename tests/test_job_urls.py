@@ -12,7 +12,11 @@ class JobUrlTests(unittest.TestCase):
         self.assertEqual({"jobs.ashbyhq.com"}, get_allowed_job_hosts("ashby"))
         self.assertEqual({"jobs.lever.co"}, get_allowed_job_hosts("lever"))
         self.assertEqual(
-            {"job-boards.greenhouse.io", "job-boards.eu.greenhouse.io"},
+            {
+                "boards.greenhouse.io",
+                "job-boards.greenhouse.io",
+                "job-boards.eu.greenhouse.io",
+            },
             get_allowed_job_hosts("greenhouse"),
         )
 
@@ -26,8 +30,20 @@ class JobUrlTests(unittest.TestCase):
         self.assertIn("multiverse.io", allowed_hosts)
         self.assertIn("jobs.ashbyhq.com", allowed_hosts)
         self.assertIn("jobs.lever.co", allowed_hosts)
+        self.assertIn("boards.greenhouse.io", allowed_hosts)
         self.assertIn("job-boards.greenhouse.io", allowed_hosts)
         self.assertIn("job-boards.eu.greenhouse.io", allowed_hosts)
+
+    def test_greenhouse_accepts_boards_greenhouse_io(self):
+        cleaned = sanitize_job_url(
+            "https://boards.greenhouse.io/stripe/jobs/123?gh_src=test&utm_source=mail",
+            source="greenhouse",
+        )
+
+        self.assertEqual(
+            "https://boards.greenhouse.io/stripe/jobs/123?gh_src=test",
+            cleaned,
+        )
 
     def test_sanitize_job_url_strips_tracking_parameters(self):
         cleaned = sanitize_job_url(
