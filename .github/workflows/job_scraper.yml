@@ -3,7 +3,7 @@ name: Job Scraper
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 11,19 * * *"
+    - cron: "30 6,11 * * *"
 
 concurrency:
   group: job-scraper

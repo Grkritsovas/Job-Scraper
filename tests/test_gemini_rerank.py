@@ -264,6 +264,93 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertEqual(7, len(result["reviewed_jobs"]))
         self.assertEqual("https://example.com/job-7", result["jobs_to_send"][-1]["url"])
 
+    def test_rerank_only_includes_eligibility_rule_when_sponsorship_matters(self):
+        jobs = [make_job(1)]
+        base_profile = {
+            "semantic_profiles": ["swe"],
+            "semantic_profile_texts": {},
+            "negative_profile_texts": [],
+            "cv_summary": "",
+        }
+        client_false = FakeClient(
+            [
+                {
+                    "candidates": [
+                        {
+                            "job_url": "https://example.com/job-1",
+                            "matched_profile": "SWE",
+                            "fit_score": 80,
+                            "why_apply": "Good junior engineering fit.",
+                            "supporting_evidence": ["Software Engineer 1"],
+                            "mismatch_evidence": [],
+                        }
+                    ]
+                },
+                {
+                    "shortlisted_jobs": [
+                        {
+                            "job_url": "https://example.com/job-1",
+                            "fit_score": 82,
+                            "why_apply": "Strong junior engineering fit.",
+                        }
+                    ]
+                },
+            ]
+        )
+        client_true = FakeClient(
+            [
+                {
+                    "candidates": [
+                        {
+                            "job_url": "https://example.com/job-1",
+                            "matched_profile": "SWE",
+                            "fit_score": 80,
+                            "why_apply": "Good junior engineering fit.",
+                            "supporting_evidence": ["Software Engineer 1"],
+                            "mismatch_evidence": [],
+                        }
+                    ]
+                },
+                {
+                    "shortlisted_jobs": [
+                        {
+                            "job_url": "https://example.com/job-1",
+                            "fit_score": 82,
+                            "why_apply": "Strong junior engineering fit.",
+                        }
+                    ]
+                },
+            ]
+        )
+
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True):
+            rerank_jobs_with_gemini(
+                jobs,
+                {**base_profile, "care_about_sponsorship": False},
+                client=client_false,
+                top_n=1,
+                batch_size=10,
+            )
+            rerank_jobs_with_gemini(
+                jobs,
+                {**base_profile, "care_about_sponsorship": True},
+                client=client_true,
+                top_n=1,
+                batch_size=10,
+            )
+
+        false_first_prompt = client_false.models.calls[0]["contents"]
+        false_second_prompt = client_false.models.calls[1]["contents"]
+        true_first_prompt = client_true.models.calls[0]["contents"]
+        true_second_prompt = client_true.models.calls[1]["contents"]
+
+        self.assertNotIn('"eligibility_rule"', false_first_prompt)
+        self.assertNotIn('"eligibility_rule"', false_second_prompt)
+        self.assertIn('"eligibility_rule"', true_first_prompt)
+        self.assertIn('"eligibility_rule"', true_second_prompt)
+        self.assertIn("SC clearance", true_first_prompt)
+        self.assertIn("SC clearance", true_second_prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

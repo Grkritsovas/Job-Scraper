@@ -167,65 +167,74 @@ def _build_candidate_context(recipient_profile):
 
 
 def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
+    instructions = {
+        "primary_source_of_truth": (
+            "The target profiles are the main decision rule. "
+            "A job must clearly fit at least one target profile to be kept."
+        ),
+        "cv_usage": (
+            "The CV summary is supporting context only. "
+            "Use it to judge transferable evidence, not to override the target profiles."
+        ),
+        "employability_rule": (
+            "Focus on realistic employability today. "
+            "Do not keep a role unless this candidate could plausibly be hired for it now."
+        ),
+        "selection_rule": (
+            "False positives are worse than false negatives. "
+            "Do not keep a role unless the fit is clear."
+        ),
+        "bad_match_example": (
+            "Bad match example: Quantitative Freight Analyst - Dry Bulk for an "
+            "early-career Computer Science and AI graduate. Shared signals like "
+            "Python, forecasting, analytics, or machine learning are not enough "
+            "when the role expects an experienced quantitative analyst with "
+            "specialist freight-market ownership and domain depth."
+        ),
+        "scope_rule": (
+            "Reject roles whose scope, title, or description indicate seniority, "
+            "independent ownership, management, strategy, consulting, or specialist "
+            "domain expertise beyond the candidate's evidence."
+        ),
+        "title_rule": (
+            "Be especially cautious with titles like manager, lead, senior, staff, "
+            "principal, director, strategist, consultant, partner, or specialist."
+        ),
+        "domain_depth_rule": (
+            "Reject roles that depend on existing niche domain depth, such as freight, "
+            "quant finance, maritime, or other specialist commercial knowledge not "
+            "supported by the candidate context."
+        ),
+        "comparison_rule": (
+            "Judge each role on its own merits. "
+            "If none are clearly good, return an empty list."
+        ),
+        "evidence_rule": (
+            "supporting_evidence and mismatch_evidence must contain short exact or "
+            "near-exact snippets from the provided job text."
+        ),
+        "profile_rule": (
+            "matched_profile must be exactly one of the provided target profile labels."
+        ),
+        "level_preference": (
+            "Prefer junior, graduate, grad, and entry-level roles. "
+            "Be cautious with manager, lead, senior, and staff roles."
+        ),
+        "output_rule": (
+            "Return only credible candidates. "
+            "For why_apply, write at most 2 short simple sentences."
+        ),
+    }
+    if recipient_profile.get("care_about_sponsorship", False):
+        instructions["eligibility_rule"] = (
+            "Reject roles with hard eligibility requirements the candidate is unlikely to meet. "
+            "This includes SC clearance, DV clearance, security vetting, nationality or citizenship restrictions, "
+            "and explicit continuous UK residency requirements such as 3 years, 5 years, or similar. "
+            "Do not keep these roles unless the candidate context directly confirms eligibility."
+        )
+
     candidate_payload = {
-        "instructions": {
-            "primary_source_of_truth": (
-                "The target profiles are the main decision rule. "
-                "A job must clearly fit at least one target profile to be kept."
-            ),
-            "cv_usage": (
-                "The CV summary is supporting context only. "
-                "Use it to judge transferable evidence, not to override the target profiles."
-            ),
-            "employability_rule": (
-                "Focus on realistic employability today. "
-                "Do not keep a role unless this candidate could plausibly be hired for it now."
-            ),
-            "selection_rule": (
-                "False positives are worse than false negatives. "
-                "Do not keep a role unless the fit is clear."
-            ),
-            "bad_match_example": (
-                "Bad match example: Quantitative Freight Analyst - Dry Bulk for an "
-                "early-career Computer Science and AI graduate. Shared signals like "
-                "Python, forecasting, analytics, or machine learning are not enough "
-                "when the role expects an experienced quantitative analyst with "
-                "specialist freight-market ownership and domain depth."
-            ),
-            "scope_rule": (
-                "Reject roles whose scope, title, or description indicate seniority, "
-                "independent ownership, management, strategy, consulting, or specialist "
-                "domain expertise beyond the candidate's evidence."
-            ),
-            "title_rule": (
-                "Be especially cautious with titles like manager, lead, senior, staff, "
-                "principal, director, strategist, consultant, partner, or specialist."
-            ),
-            "domain_depth_rule": (
-                "Reject roles that depend on existing niche domain depth, such as freight, "
-                "quant finance, maritime, or other specialist commercial knowledge not "
-                "supported by the candidate context."
-            ),
-            "comparison_rule": (
-                "Judge each role on its own merits. "
-                "If none are clearly good, return an empty list."
-            ),
-            "evidence_rule": (
-                "supporting_evidence and mismatch_evidence must contain short exact or "
-                "near-exact snippets from the provided job text."
-            ),
-            "profile_rule": (
-                "matched_profile must be exactly one of the provided target profile labels."
-            ),
-            "level_preference": (
-                "Prefer junior, graduate, grad, and entry-level roles. "
-                "Be cautious with manager, lead, senior, and staff roles."
-            ),
-            "output_rule": (
-                "Return only credible candidates. "
-                "For why_apply, write at most 2 short simple sentences."
-            ),
-        },
+        "instructions": instructions,
         "candidate": _build_candidate_context(recipient_profile),
         "jobs": [_build_job_payload(job, description_chars) for job in jobs],
     }
@@ -252,39 +261,48 @@ def _build_pass_two_prompt(recipient_profile, candidates):
         }
         for candidate in candidates
     ]
+    instructions = {
+        "task": (
+            "Compare these already-screened candidates globally and keep only the "
+            "strongest final matches."
+        ),
+        "employability_rule": (
+            "Focus on realistic employability today. "
+            "Drop roles that only look relevant because of tool overlap."
+        ),
+        "selection_rule": (
+            "False positives are worse than false negatives. "
+            "If none are clearly strong matches, return an empty list."
+        ),
+        "scope_rule": (
+            "Reject roles whose final case depends on stretched reasoning, domain-specific "
+            "ownership, or seniority the candidate does not clearly have."
+        ),
+        "bad_match_example": (
+            "Example to reject: Quantitative Freight Analyst - Dry Bulk for an "
+            "early-career Computer Science and AI graduate. Shared Python, forecasting, "
+            "or analytics overlap is not enough when the role expects experienced "
+            "quantitative ownership and freight-market depth."
+        ),
+        "comparison_rule": (
+            "Use the candidate profiles as the main rule. "
+            "Jobs with weak evidence, notable mismatches, or stretched reasoning should be dropped."
+        ),
+        "output_rule": (
+            "Return only the final shortlist as JSON matching the schema. "
+            "For why_apply, write at most 2 short simple sentences."
+        ),
+    }
+    if recipient_profile.get("care_about_sponsorship", False):
+        instructions["eligibility_rule"] = (
+            "Reject roles with hard eligibility requirements the candidate is unlikely to meet. "
+            "This includes SC clearance, DV clearance, security vetting, nationality or citizenship restrictions, "
+            "and explicit continuous UK residency requirements such as 3 years, 5 years, or similar. "
+            "Do not keep these roles unless the candidate context directly confirms eligibility."
+        )
+
     payload = {
-        "instructions": {
-            "task": (
-                "Compare these already-screened candidates globally and keep only the "
-                "strongest final matches."
-            ),
-            "employability_rule": (
-                "Focus on realistic employability today. "
-                "Drop roles that only look relevant because of tool overlap."
-            ),
-            "selection_rule": (
-                "False positives are worse than false negatives. "
-                "If none are clearly strong matches, return an empty list."
-            ),
-            "scope_rule": (
-                "Reject roles whose final case depends on stretched reasoning, domain-specific "
-                "ownership, or seniority the candidate does not clearly have."
-            ),
-            "bad_match_example": (
-                "Example to reject: Quantitative Freight Analyst - Dry Bulk for an "
-                "early-career Computer Science and AI graduate. Shared Python, forecasting, "
-                "or analytics overlap is not enough when the role expects experienced "
-                "quantitative ownership and freight-market depth."
-            ),
-            "comparison_rule": (
-                "Use the candidate profiles as the main rule. "
-                "Jobs with weak evidence, notable mismatches, or stretched reasoning should be dropped."
-            ),
-            "output_rule": (
-                "Return only the final shortlist as JSON matching the schema. "
-                "For why_apply, write at most 2 short simple sentences."
-            ),
-        },
+        "instructions": instructions,
         "candidate": _build_candidate_context(recipient_profile),
         "screened_candidates": candidate_cards,
     }
