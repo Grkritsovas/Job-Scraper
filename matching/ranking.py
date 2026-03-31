@@ -3,6 +3,7 @@ import re
 from collections import Counter
 
 from matching.hard_filters import get_hard_filter_reason
+from matching.models import ALL_MPNET_BASE_V2
 from matching.profile_library import (
     DEFAULT_NEGATIVE_PROFILE_TEXTS,
     build_profile_specs,
@@ -10,8 +11,10 @@ from matching.profile_library import (
 from shared.descriptions import build_matching_text
 
 
+# Change this assignment to swap the default embedding model in code.
+SELECTED_EMBEDDING_MODEL = ALL_MPNET_BASE_V2
 EMBEDDING_MODEL_NAME = os.getenv(
-    "JOB_SCRAPER_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
+    "JOB_SCRAPER_EMBEDDING_MODEL", SELECTED_EMBEDDING_MODEL.model_name
 )
 DEFAULT_MIN_PROFILE_SCORE = float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.43"))
 SENIORITY_PENALTY_FLOOR = 0.35

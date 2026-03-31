@@ -19,6 +19,7 @@ from matching.ranking import (
     DEFAULT_SALARY_PENALTY_MAX,
     DEFAULT_SENIORITY_PENALTY_WEIGHT,
     EMBEDDING_MODEL_NAME,
+    SELECTED_EMBEDDING_MODEL,
     ProfileMatcher,
     SENIORITY_PENALTY_FLOOR,
     apply_salary_penalty,
