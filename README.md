@@ -12,7 +12,7 @@ Primary intended usage:
 
 - loads target companies and boards from config files or GitHub Actions variables
 - scrapes jobs from configured public job boards
-- ranks jobs separately for each recipient profile with semantic matching
+- ranks jobs separately for each recipient profile with semantic matching (choose a sentence-transformer from [matching/models](matching/models/))
 - skips jobs already sent to that recipient
 - emails a digest of new matches
 
