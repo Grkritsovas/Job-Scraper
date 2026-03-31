@@ -1,8 +1,8 @@
 import os
 import re
 
-from config_loader import load_json_config
-from profile_library import DEFAULT_SEMANTIC_PROFILES
+from config.config_loader import load_json_config
+from matching.profile_library import DEFAULT_SEMANTIC_PROFILES
 
 
 def _slugify(value):

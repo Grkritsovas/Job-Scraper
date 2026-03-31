@@ -1,17 +1,17 @@
 import os
 
-from ashby_scraper import collect_jobs as collect_ashby_jobs
-from digest import build_digest_bodies
+from config.recipient_profiles import load_recipient_profiles
+from config.target_config import load_configured_targets
 from emailer import send_email
-from greenhouse_scraper import collect_jobs as collect_greenhouse_jobs
-from lever_scraper import collect_jobs as collect_lever_jobs
-from nextjs_scraper import collect_jobs as collect_nextjs_jobs
-from recipient_profiles import load_recipient_profiles
-from ranking import rank_jobs
-from scrape_diagnostics import ScrapeDiagnostics
+from matching.ranking import rank_jobs
+from scrapers.ashby_scraper import collect_jobs as collect_ashby_jobs
+from scrapers.greenhouse_scraper import collect_jobs as collect_greenhouse_jobs
+from scrapers.lever_scraper import collect_jobs as collect_lever_jobs
+from scrapers.nextjs_scraper import collect_jobs as collect_nextjs_jobs
+from scrapers.scrape_diagnostics import ScrapeDiagnostics
+from shared.digest import build_digest_bodies
 from sponsorship import enrich_jobs, load_sponsor_company_lookup
 from storage import create_storage
-from target_config import load_configured_targets
 
 
 def sponsor_aware_profiles(recipient_profiles):

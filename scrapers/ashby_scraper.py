@@ -1,12 +1,12 @@
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
 
-from company_names import normalize_company_name
-from descriptions import HEADERS, fetch_job_description_details
-from job_urls import sanitize_job_url
-from locations import format_locations, is_uk_location
-from target_config import load_ashby_targets
+from config.target_config import load_ashby_targets
+from shared.company_names import normalize_company_name
+from shared.descriptions import HEADERS, fetch_job_description_details
+from shared.job_urls import sanitize_job_url
+from shared.locations import format_locations, is_uk_location
 
 
 def normalize_ashby_target(value):
@@ -20,7 +20,7 @@ def normalize_ashby_target(value):
 
     parsed = urlparse(cleaned)
     path_parts = [part for part in parsed.path.split("/") if part]
-    company = (path_parts[0] if path_parts else "").lower()
+    company = unquote(path_parts[0]).lower() if path_parts else ""
     query_params = parse_qs(parsed.query)
     location_ids = {
         location_id.strip()

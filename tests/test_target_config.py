@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from target_config import load_configured_target_details
+from config.target_config import load_configured_target_details
 
 
 class TargetConfigTests(unittest.TestCase):

@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 EXAMPLES_DIR = BASE_DIR / "examples"
 
 

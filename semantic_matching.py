@@ -1,11 +1,11 @@
-from hard_filters import (
+from matching.hard_filters import (
     DEFAULT_MAX_YEARS_EXPERIENCE,
     extract_required_experience_years,
     get_hard_filter_reason,
     passes_experience_filter,
     passes_hard_filters,
 )
-from profile_library import (
+from matching.profile_library import (
     DEFAULT_NEGATIVE_PROFILE_TEXTS,
     DEFAULT_SEMANTIC_PROFILES,
     PROFILE_ID_ALIASES,
@@ -14,7 +14,7 @@ from profile_library import (
     get_default_semantic_profile_ids,
     normalize_profile_id,
 )
-from ranking import (
+from matching.ranking import (
     DEFAULT_MIN_PROFILE_SCORE,
     DEFAULT_SALARY_PENALTY_MAX,
     DEFAULT_SENIORITY_PENALTY_WEIGHT,

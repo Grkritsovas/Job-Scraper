@@ -1,4 +1,4 @@
-from config_loader import load_list_config, resolve_list_config
+from config.config_loader import load_list_config, resolve_list_config
 
 
 TARGET_CONFIG_SPECS = {

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from ashby_scraper import collect_company_jobs, normalize_ashby_target
+from scrapers.ashby_scraper import collect_company_jobs, normalize_ashby_target
 
 
 class AshbyScraperTests(unittest.TestCase):
@@ -27,8 +27,18 @@ class AshbyScraperTests(unittest.TestCase):
             ),
         )
 
-    @patch("ashby_scraper.fetch_job_description_details")
-    @patch("ashby_scraper.fetch_ashby_jobs")
+    def test_normalize_ashby_target_decodes_encoded_company_name(self):
+        self.assertEqual(
+            {
+                "company": "it labs",
+                "location_ids": set(),
+                "label": "https://jobs.ashbyhq.com/it%20labs",
+            },
+            normalize_ashby_target("https://jobs.ashbyhq.com/it%20labs"),
+        )
+
+    @patch("scrapers.ashby_scraper.fetch_job_description_details")
+    @patch("scrapers.ashby_scraper.fetch_ashby_jobs")
     def test_collect_company_jobs_can_filter_by_exact_location_id(
         self,
         mock_fetch_ashby_jobs,

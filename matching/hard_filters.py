@@ -1,13 +1,13 @@
 import re
 
-from filters import (
+from matching.filters import (
     AUTHORIZATION_MISMATCH_PATTERNS,
     ELIGIBILITY_REJECT_PATTERNS,
     HARD_COMMERCIAL_TERMS,
     HARD_ELIGIBILITY_TITLE_TERMS,
     HARD_SENIORITY_TERMS,
 )
-from locations import is_uk_location
+from shared.locations import is_uk_location
 
 
 DEFAULT_MAX_YEARS_EXPERIENCE = 1

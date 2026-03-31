@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from greenhouse_scraper import (
+from scrapers.greenhouse_scraper import (
     collect_board_jobs,
     get_greenhouse_job_url,
     normalize_board_token,
@@ -23,8 +23,8 @@ class GreenhouseScraperTests(unittest.TestCase):
             normalize_board_token("https://job-boards.greenhouse.io/dept?keyword=London"),
         )
 
-    @patch("greenhouse_scraper.get_greenhouse_description")
-    @patch("greenhouse_scraper.fetch_greenhouse_jobs")
+    @patch("scrapers.greenhouse_scraper.get_greenhouse_description")
+    @patch("scrapers.greenhouse_scraper.fetch_greenhouse_jobs")
     def test_ritual_board_can_accept_remote_jobs_without_uk_location(
         self,
         mock_fetch_greenhouse_jobs,
@@ -56,8 +56,8 @@ class GreenhouseScraperTests(unittest.TestCase):
             get_greenhouse_job_url({"absolute_url": "/embed/job_app?token=123"}),
         )
 
-    @patch("greenhouse_scraper.get_greenhouse_description")
-    @patch("greenhouse_scraper.fetch_greenhouse_jobs")
+    @patch("scrapers.greenhouse_scraper.get_greenhouse_description")
+    @patch("scrapers.greenhouse_scraper.fetch_greenhouse_jobs")
     def test_collect_board_jobs_accepts_company_hosted_gh_jid_urls(
         self,
         mock_fetch_greenhouse_jobs,

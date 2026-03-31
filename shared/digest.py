@@ -11,6 +11,35 @@ def format_company_heading(company, company_jobs, recipient_profile):
     return company
 
 
+def _score_to_percent(score):
+    return max(0, round(float(score or 0) * 100))
+
+
+def format_job_fit(job):
+    top_profile = job.get("top_profile")
+    top_score = job.get("top_score")
+    if top_profile and top_score is not None:
+        fit_line = f"Fit: {top_profile} {_score_to_percent(top_score)}%"
+        second_profile = job.get("second_profile")
+        second_score = job.get("second_score")
+        if (
+            second_profile
+            and second_profile != top_profile
+            and second_score is not None
+            and second_score > 0
+        ):
+            fit_line += (
+                f" | {second_profile} "
+                f"{_score_to_percent(second_score)}%"
+            )
+        return fit_line
+
+    if job.get("fit_summary"):
+        return f"Fit: {job['fit_summary']}"
+
+    return ""
+
+
 def build_digest_bodies(jobs, recipient_profile, max_jobs_per_email=20):
     if not jobs:
         return []
@@ -48,8 +77,9 @@ def build_digest_bodies(jobs, recipient_profile, max_jobs_per_email=20):
             location = job.get("location", "")
             location_suffix = f" | {location}" if location else ""
             lines.append(f"- {job['title']}{location_suffix}")
-            if job.get("fit_summary"):
-                lines.append(f"  Top fit: {job['fit_summary']}")
+            fit_line = format_job_fit(job)
+            if fit_line:
+                lines.append(f"  {fit_line}")
             if recipient_profile.get("care_about_sponsorship", False):
                 sponsorship_summary = format_sponsorship_summary(job)
                 if sponsorship_summary:

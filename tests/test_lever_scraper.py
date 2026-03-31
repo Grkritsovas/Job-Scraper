@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from lever_scraper import (
+from scrapers.lever_scraper import (
     DEFAULT_LEVER_API_HOST,
     EU_LEVER_API_HOST,
     fetch_lever_jobs,
@@ -79,7 +79,7 @@ class LeverScraperTests(unittest.TestCase):
             ),
         )
 
-    @patch("lever_scraper.requests.get")
+    @patch("scrapers.lever_scraper.requests.get")
     def test_fetch_lever_jobs_falls_back_to_eu_api_after_standard_404(self, mock_get):
         response_404 = Mock()
         response_404.raise_for_status.side_effect = __import__("requests").HTTPError(

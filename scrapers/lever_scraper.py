@@ -2,11 +2,11 @@ from urllib.parse import urlparse
 
 import requests
 
-from company_names import normalize_company_name
-from descriptions import HEADERS, fetch_job_description_details
-from job_urls import sanitize_job_url
-from locations import format_locations, is_uk_location
-from target_config import load_lever_targets
+from config.target_config import load_lever_targets
+from shared.company_names import normalize_company_name
+from shared.descriptions import HEADERS, fetch_job_description_details
+from shared.job_urls import sanitize_job_url
+from shared.locations import format_locations, is_uk_location
 
 
 LEVER_API_URL = "https://{api_host}/v0/postings/{site}?mode=json&skip={skip}&limit={limit}"

@@ -1,6 +1,6 @@
 import unittest
 
-from job_urls import (
+from shared.job_urls import (
     get_allowed_job_hosts,
     normalize_seed_url,
     sanitize_job_url,

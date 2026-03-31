@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from recipient_profiles import load_recipient_profiles
+from config.recipient_profiles import load_recipient_profiles
 
 
 class RecipientProfilesTests(unittest.TestCase):

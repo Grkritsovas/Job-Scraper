@@ -2,8 +2,8 @@ import os
 import re
 from collections import Counter
 
-from hard_filters import get_hard_filter_reason
-from profile_library import (
+from matching.hard_filters import get_hard_filter_reason
+from matching.profile_library import (
     DEFAULT_NEGATIVE_PROFILE_TEXTS,
     build_profile_specs,
 )

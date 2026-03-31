@@ -11,9 +11,11 @@ class DigestFormattingTests(unittest.TestCase):
                 "title": "Software Engineer",
                 "url": "https://example.com/job",
                 "location": "London",
-                "fit_summary": "SWE 54% | AI/ML 30% | Data Science 28%",
+                "top_profile": "SWE",
                 "ranking_score": 0.54,
                 "top_score": 0.54,
+                "second_profile": "AI/ML",
+                "second_score": 0.30,
                 "score_margin": 0.10,
                 "is_sponsor_licensed_employer": True,
                 "sponsorship_status": "unknown",
@@ -29,6 +31,7 @@ class DigestFormattingTests(unittest.TestCase):
 
         self.assertEqual(1, len(bodies))
         self.assertIn("Marshmallow [Sponsor-licensed]", bodies[0])
+        self.assertIn("Fit: SWE 54% | AI/ML 30%", bodies[0])
         self.assertNotIn("Sponsorship:", bodies[0])
 
     def test_sponsorship_line_only_shows_for_non_unknown_status(self):
@@ -38,9 +41,11 @@ class DigestFormattingTests(unittest.TestCase):
                 "title": "Software Engineer",
                 "url": "https://example.com/job",
                 "location": "London",
-                "fit_summary": "SWE 54% | AI/ML 30% | Data Science 28%",
+                "top_profile": "SWE",
                 "ranking_score": 0.54,
                 "top_score": 0.54,
+                "second_profile": "AI/ML",
+                "second_score": 0.30,
                 "score_margin": 0.10,
                 "is_sponsor_licensed_employer": True,
                 "sponsorship_status": "explicit_no",
@@ -55,6 +60,7 @@ class DigestFormattingTests(unittest.TestCase):
         bodies = build_digest_bodies(jobs, recipient_profile)
 
         self.assertIn("Palantir [Sponsor-licensed]", bodies[0])
+        self.assertIn("Fit: SWE 54% | AI/ML 30%", bodies[0])
         self.assertIn("Sponsorship: explicit no", bodies[0])
 
     def test_lookup_marker_can_show_without_textual_sponsorship_line(self):
@@ -64,9 +70,11 @@ class DigestFormattingTests(unittest.TestCase):
                 "title": "Machine Learning Engineer",
                 "url": "https://example.com/job",
                 "location": "London",
-                "fit_summary": "AI/ML 54% | SWE 30%",
+                "top_profile": "AI/ML",
                 "ranking_score": 0.54,
                 "top_score": 0.54,
+                "second_profile": "SWE",
+                "second_score": 0.30,
                 "score_margin": 0.10,
                 "is_sponsor_licensed_employer": True,
                 "sponsorship_status": "explicit_no",
@@ -81,7 +89,32 @@ class DigestFormattingTests(unittest.TestCase):
         bodies = build_digest_bodies(jobs, recipient_profile)
 
         self.assertIn("PhysicsX [Sponsor-licensed]", bodies[0])
+        self.assertIn("Fit: AI/ML 54% | SWE 30%", bodies[0])
         self.assertNotIn("Sponsorship:", bodies[0])
+
+    def test_fit_line_falls_back_to_existing_fit_summary_when_structured_scores_are_missing(self):
+        jobs = [
+            {
+                "company": "Example",
+                "title": "Data Engineer",
+                "url": "https://example.com/job",
+                "location": "London",
+                "fit_summary": "Data Analyst 58% | SWE 51%",
+                "ranking_score": 0.58,
+                "score_margin": 0.07,
+                "is_sponsor_licensed_employer": False,
+                "sponsorship_status": "unknown",
+                "sponsor_company_metadata": {},
+            }
+        ]
+        recipient_profile = {
+            "care_about_sponsorship": False,
+            "use_sponsor_lookup": False,
+        }
+
+        bodies = build_digest_bodies(jobs, recipient_profile)
+
+        self.assertIn("Fit: Data Analyst 58% | SWE 51%", bodies[0])
 
 
 if __name__ == "__main__":
