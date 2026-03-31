@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from semantic_matching import build_profile_specs, get_hard_filter_reason, rank_jobs
 
@@ -141,6 +142,62 @@ class SemanticMatchingTests(unittest.TestCase):
         }
 
         ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
+
+        self.assertEqual(1, len(ranked_jobs))
+        self.assertAlmostEqual(0.552, ranked_jobs[0]["top_score"])
+        self.assertEqual(1.2, ranked_jobs[0]["title_boost_multiplier"])
+
+    def test_junior_title_boost_multiplier_is_configurable(self):
+        jobs = [
+            make_job(
+                title="Graduate Data Analyst",
+                url="https://example.com/graduate-custom-boost",
+                description="borderline_fit",
+            )
+        ]
+        recipient_profile = {
+            "semantic_profiles": ["data_analyst", "data_science", "ai_ml_engineer"],
+            "min_top_score": 0.47,
+            "negative_profile_texts": [],
+            "seniority_penalty_weight": 0.18,
+            "care_about_sponsorship": False,
+            "use_sponsor_lookup": False,
+        }
+
+        with patch.dict(
+            "os.environ",
+            {"JOB_SCRAPER_JUNIOR_BOOST_MULTIPLIER": "1.1"},
+            clear=False,
+        ):
+            ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
+
+        self.assertEqual(1, len(ranked_jobs))
+        self.assertAlmostEqual(0.506, ranked_jobs[0]["top_score"])
+        self.assertEqual(1.1, ranked_jobs[0]["title_boost_multiplier"])
+
+    def test_junior_boost_terms_are_configurable(self):
+        jobs = [
+            make_job(
+                title="Apprentice Data Analyst",
+                url="https://example.com/apprentice-borderline",
+                description="borderline_fit",
+            )
+        ]
+        recipient_profile = {
+            "semantic_profiles": ["data_analyst", "data_science", "ai_ml_engineer"],
+            "min_top_score": 0.47,
+            "negative_profile_texts": [],
+            "seniority_penalty_weight": 0.18,
+            "care_about_sponsorship": False,
+            "use_sponsor_lookup": False,
+        }
+
+        with patch.dict(
+            "os.environ",
+            {"JOB_SCRAPER_JUNIOR_BOOST_TERMS": "junior,graduate,apprentice"},
+            clear=False,
+        ):
+            ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
 
         self.assertEqual(1, len(ranked_jobs))
         self.assertAlmostEqual(0.552, ranked_jobs[0]["top_score"])

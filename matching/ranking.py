@@ -22,11 +22,13 @@ DEFAULT_SENIORITY_PENALTY_WEIGHT = float(
     os.getenv("JOB_SCRAPER_SENIORITY_PENALTY_WEIGHT", "0.18")
 )
 DEFAULT_SALARY_PENALTY_MAX = 0.35
-JUNIOR_TITLE_BOOST_MULTIPLIER = 1.2
-
-JUNIOR_TITLE_PATTERN = re.compile(
-    r"\b(junior|grad|graduate|entry[\s-]?level)\b",
-    flags=re.IGNORECASE,
+DEFAULT_JUNIOR_BOOST_MULTIPLIER = 1.2
+DEFAULT_JUNIOR_BOOST_TERMS = (
+    "junior",
+    "grad",
+    "graduate",
+    "entry level",
+    "entry-level",
 )
 
 SALARY_RANGE_PATTERNS = [
@@ -161,8 +163,46 @@ def format_fit_summary(ranked_profiles):
     )
 
 
+def get_junior_boost_multiplier():
+    raw_value = os.getenv("JOB_SCRAPER_JUNIOR_BOOST_MULTIPLIER", "").strip()
+    if not raw_value:
+        return DEFAULT_JUNIOR_BOOST_MULTIPLIER
+
+    try:
+        return max(1.0, float(raw_value))
+    except ValueError:
+        return DEFAULT_JUNIOR_BOOST_MULTIPLIER
+
+
+def get_junior_boost_terms():
+    raw_value = os.getenv("JOB_SCRAPER_JUNIOR_BOOST_TERMS", "").strip()
+    if not raw_value:
+        return list(DEFAULT_JUNIOR_BOOST_TERMS)
+
+    terms = [
+        term.strip().lower()
+        for term in raw_value.split(",")
+        if term.strip()
+    ]
+    return terms or list(DEFAULT_JUNIOR_BOOST_TERMS)
+
+
+def get_junior_title_pattern():
+    term_patterns = []
+    for term in get_junior_boost_terms():
+        escaped = re.escape(term)
+        escaped = escaped.replace(r"\ ", r"[\s-]+")
+        escaped = escaped.replace(r"\-", r"[\s-]+")
+        term_patterns.append(escaped)
+
+    return re.compile(
+        rf"\b(?:{'|'.join(term_patterns)})\b",
+        flags=re.IGNORECASE,
+    )
+
+
 def title_gets_junior_boost(title):
-    return bool(JUNIOR_TITLE_PATTERN.search(title or ""))
+    return bool(get_junior_title_pattern().search(title or ""))
 
 
 def apply_title_boost(score_data, job):
@@ -170,7 +210,7 @@ def apply_title_boost(score_data, job):
         score_data["title_boost_multiplier"] = 1.0
         return score_data
 
-    multiplier = JUNIOR_TITLE_BOOST_MULTIPLIER
+    multiplier = get_junior_boost_multiplier()
     boosted_profile_scores = {
         label: min(1.0, score * multiplier)
         for label, score in score_data["profile_scores"].items()
