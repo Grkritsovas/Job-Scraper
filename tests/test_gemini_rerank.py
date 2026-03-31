@@ -98,7 +98,7 @@ class GeminiRerankTests(unittest.TestCase):
         )
 
         with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True):
-            reranked = rerank_jobs_with_gemini(
+            result = rerank_jobs_with_gemini(
                 jobs,
                 recipient_profile,
                 client=client,
@@ -106,6 +106,11 @@ class GeminiRerankTests(unittest.TestCase):
                 batch_size=10,
             )
 
+        reranked = result["jobs_to_send"]
+        self.assertEqual("gemini", result["review_mode"])
+        self.assertEqual(2, len(result["reviewed_jobs"]))
+        self.assertEqual(1, result["llm_shortlisted_jobs"])
+        self.assertEqual(2, result["gemini_reviewed_jobs"])
         self.assertEqual(1, len(reranked))
         self.assertEqual("https://example.com/job-2", reranked[0]["url"])
         self.assertEqual(88, reranked[0]["llm_fit_score"])
@@ -143,7 +148,7 @@ class GeminiRerankTests(unittest.TestCase):
         )
 
         with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True):
-            reranked = rerank_jobs_with_gemini(
+            result = rerank_jobs_with_gemini(
                 jobs,
                 recipient_profile,
                 client=client,
@@ -151,7 +156,11 @@ class GeminiRerankTests(unittest.TestCase):
                 batch_size=10,
             )
 
-        self.assertEqual([], reranked)
+        self.assertEqual("gemini", result["review_mode"])
+        self.assertEqual([], result["jobs_to_send"])
+        self.assertEqual(11, len(result["reviewed_jobs"]))
+        self.assertEqual(0, result["llm_shortlisted_jobs"])
+        self.assertEqual(11, result["gemini_reviewed_jobs"])
         self.assertEqual(2, len(client.models.calls))
         self.assertIn('"url": "https://example.com/job-10"', client.models.calls[0]["contents"])
         self.assertNotIn(
@@ -161,7 +170,7 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertIn('"url": "https://example.com/job-11"', client.models.calls[1]["contents"])
         self.assertNotIn('"url": "https://example.com/job-12"', client.models.calls[1]["contents"])
 
-    def test_rerank_falls_back_to_first_pass_shortlist_if_final_pass_fails(self):
+    def test_rerank_returns_no_jobs_if_final_pass_fails(self):
         jobs = [make_job(1)]
         recipient_profile = {
             "semantic_profiles": ["swe"],
@@ -201,7 +210,7 @@ class GeminiRerankTests(unittest.TestCase):
                 self.models = FinalPassFailingModels([])
 
         with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True):
-            reranked = rerank_jobs_with_gemini(
+            result = rerank_jobs_with_gemini(
                 jobs,
                 recipient_profile,
                 client=FinalPassFailingClient(),
@@ -209,14 +218,15 @@ class GeminiRerankTests(unittest.TestCase):
                 batch_size=10,
             )
 
-        self.assertEqual(1, len(reranked))
-        self.assertEqual("https://example.com/job-1", reranked[0]["url"])
-        self.assertEqual(81, reranked[0]["llm_fit_score"])
-        self.assertEqual("SWE", reranked[0]["llm_matched_profile"])
-        self.assertNotIn("_original_index", reranked[0])
+        self.assertEqual("gemini_failed", result["review_mode"])
+        self.assertEqual([], result["jobs_to_send"])
+        self.assertEqual([], result["reviewed_jobs"])
+        self.assertEqual(0, result["llm_shortlisted_jobs"])
+        self.assertEqual(0, result["gemini_reviewed_jobs"])
+        self.assertIn("final pass failed", result["review_error"])
 
-    def test_rerank_returns_top_n_semantic_jobs_when_disabled(self):
-        jobs = [make_job(1), make_job(2), make_job(3)]
+    def test_rerank_returns_capped_semantic_jobs_when_disabled(self):
+        jobs = [make_job(index) for index in range(1, 80)]
         recipient_profile = {
             "semantic_profiles": ["swe"],
             "semantic_profile_texts": {},
@@ -225,11 +235,34 @@ class GeminiRerankTests(unittest.TestCase):
         }
 
         with patch.dict(os.environ, {}, clear=True):
-            reranked = rerank_jobs_with_gemini(jobs, recipient_profile, top_n=2)
+            result = rerank_jobs_with_gemini(jobs, recipient_profile)
 
-        self.assertEqual(2, len(reranked))
-        self.assertEqual("https://example.com/job-1", reranked[0]["url"])
-        self.assertEqual("https://example.com/job-2", reranked[1]["url"])
+        self.assertEqual("semantic", result["review_mode"])
+        self.assertEqual(60, len(result["jobs_to_send"]))
+        self.assertEqual(60, len(result["reviewed_jobs"]))
+        self.assertEqual("https://example.com/job-1", result["jobs_to_send"][0]["url"])
+        self.assertEqual("https://example.com/job-60", result["jobs_to_send"][-1]["url"])
+
+    def test_rerank_honors_semantic_cap_env_var_when_disabled(self):
+        jobs = [make_job(index) for index in range(1, 20)]
+        recipient_profile = {
+            "semantic_profiles": ["swe"],
+            "semantic_profile_texts": {},
+            "negative_profile_texts": [],
+            "cv_summary": "",
+        }
+
+        with patch.dict(
+            os.environ,
+            {"JOB_SCRAPER_MAX_SEMANTIC_EMAIL_JOBS": "7"},
+            clear=True,
+        ):
+            result = rerank_jobs_with_gemini(jobs, recipient_profile)
+
+        self.assertEqual("semantic", result["review_mode"])
+        self.assertEqual(7, len(result["jobs_to_send"]))
+        self.assertEqual(7, len(result["reviewed_jobs"]))
+        self.assertEqual("https://example.com/job-7", result["jobs_to_send"][-1]["url"])
 
 
 if __name__ == "__main__":

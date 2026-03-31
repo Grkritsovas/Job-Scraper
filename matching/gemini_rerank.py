@@ -10,6 +10,7 @@ DEFAULT_TOP_N = 100
 DEFAULT_BATCH_SIZE = 10
 DEFAULT_DESCRIPTION_CHARS = 1600
 DEFAULT_EVIDENCE_ITEMS = 2
+DEFAULT_MAX_SEMANTIC_EMAIL_JOBS = 60
 PASS_ONE_JSON_SCHEMA = {
     "type": "object",
     "properties": {
@@ -77,6 +78,24 @@ def _safe_int_env(name, default):
         return int(raw_value)
     except ValueError:
         return default
+
+
+def _build_result(
+    jobs_to_send,
+    reviewed_jobs,
+    review_mode,
+    llm_shortlisted_jobs=None,
+    gemini_reviewed_jobs=None,
+    review_error=None,
+):
+    return {
+        "jobs_to_send": jobs_to_send,
+        "reviewed_jobs": reviewed_jobs,
+        "review_mode": review_mode,
+        "llm_shortlisted_jobs": llm_shortlisted_jobs,
+        "gemini_reviewed_jobs": gemini_reviewed_jobs,
+        "review_error": review_error,
+    }
 
 
 def _chunked(values, size):
@@ -158,9 +177,34 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
                 "The CV summary is supporting context only. "
                 "Use it to judge transferable evidence, not to override the target profiles."
             ),
+            "employability_rule": (
+                "Focus on realistic employability today. "
+                "Do not keep a role unless this candidate could plausibly be hired for it now."
+            ),
             "selection_rule": (
                 "False positives are worse than false negatives. "
                 "Do not keep a role unless the fit is clear."
+            ),
+            "bad_match_example": (
+                "Bad match example: Quantitative Freight Analyst - Dry Bulk for an "
+                "early-career Computer Science and AI graduate. Shared signals like "
+                "Python, forecasting, analytics, or machine learning are not enough "
+                "when the role expects an experienced quantitative analyst with "
+                "specialist freight-market ownership and domain depth."
+            ),
+            "scope_rule": (
+                "Reject roles whose scope, title, or description indicate seniority, "
+                "independent ownership, management, strategy, consulting, or specialist "
+                "domain expertise beyond the candidate's evidence."
+            ),
+            "title_rule": (
+                "Be especially cautious with titles like manager, lead, senior, staff, "
+                "principal, director, strategist, consultant, partner, or specialist."
+            ),
+            "domain_depth_rule": (
+                "Reject roles that depend on existing niche domain depth, such as freight, "
+                "quant finance, maritime, or other specialist commercial knowledge not "
+                "supported by the candidate context."
             ),
             "comparison_rule": (
                 "Judge each role on its own merits. "
@@ -214,9 +258,23 @@ def _build_pass_two_prompt(recipient_profile, candidates):
                 "Compare these already-screened candidates globally and keep only the "
                 "strongest final matches."
             ),
+            "employability_rule": (
+                "Focus on realistic employability today. "
+                "Drop roles that only look relevant because of tool overlap."
+            ),
             "selection_rule": (
                 "False positives are worse than false negatives. "
                 "If none are clearly strong matches, return an empty list."
+            ),
+            "scope_rule": (
+                "Reject roles whose final case depends on stretched reasoning, domain-specific "
+                "ownership, or seniority the candidate does not clearly have."
+            ),
+            "bad_match_example": (
+                "Example to reject: Quantitative Freight Analyst - Dry Bulk for an "
+                "early-career Computer Science and AI graduate. Shared Python, forecasting, "
+                "or analytics overlap is not enough when the role expects experienced "
+                "quantitative ownership and freight-market depth."
             ),
             "comparison_rule": (
                 "Use the candidate profiles as the main rule. "
@@ -425,15 +483,30 @@ def rerank_jobs_with_gemini(
     description_chars=None,
 ):
     if not jobs:
-        return []
+        return _build_result([], [], "empty", llm_shortlisted_jobs=0, gemini_reviewed_jobs=0)
+
+    if not gemini_rerank_enabled():
+        max_semantic_email_jobs = max(
+            1,
+            _safe_int_env(
+                "JOB_SCRAPER_MAX_SEMANTIC_EMAIL_JOBS",
+                DEFAULT_MAX_SEMANTIC_EMAIL_JOBS,
+            ),
+        )
+        semantic_jobs = jobs[:max_semantic_email_jobs]
+        return _build_result(
+            semantic_jobs,
+            semantic_jobs,
+            "semantic",
+            llm_shortlisted_jobs=None,
+            gemini_reviewed_jobs=None,
+        )
 
     effective_top_n = min(
         len(jobs),
         max(1, top_n or _safe_int_env("JOB_SCRAPER_LLM_TOP_N", DEFAULT_TOP_N)),
     )
     candidate_jobs = jobs[:effective_top_n]
-    if not gemini_rerank_enabled():
-        return candidate_jobs
 
     effective_batch_size = max(
         1,
@@ -456,11 +529,26 @@ def rerank_jobs_with_gemini(
     try:
         client = client or _build_client()
     except RuntimeError as exc:
-        print(f"Warning: {exc}")
-        return candidate_jobs
+        error_message = str(exc)
+        print(f"Warning: Gemini reranking unavailable, not sending digest. {error_message}")
+        return _build_result(
+            [],
+            [],
+            "gemini_failed",
+            llm_shortlisted_jobs=0,
+            gemini_reviewed_jobs=0,
+            review_error=error_message,
+        )
 
     if client is None:
-        return candidate_jobs
+        return _build_result(
+            [],
+            [],
+            "gemini_failed",
+            llm_shortlisted_jobs=0,
+            gemini_reviewed_jobs=0,
+            review_error="Gemini API key is missing.",
+        )
 
     try:
         screened_candidates = _run_batch_screening(
@@ -472,11 +560,28 @@ def rerank_jobs_with_gemini(
             effective_description_chars,
         )
     except Exception as exc:
-        print(f"Warning: Gemini batch screening failed, using semantic shortlist instead. {exc}")
-        return candidate_jobs
+        error_message = str(exc)
+        print(
+            "Warning: Gemini batch screening failed, not sending digest. "
+            f"{error_message}"
+        )
+        return _build_result(
+            [],
+            [],
+            "gemini_failed",
+            llm_shortlisted_jobs=0,
+            gemini_reviewed_jobs=0,
+            review_error=error_message,
+        )
 
     if not screened_candidates:
-        return []
+        return _build_result(
+            [],
+            candidate_jobs,
+            "gemini",
+            llm_shortlisted_jobs=0,
+            gemini_reviewed_jobs=len(candidate_jobs),
+        )
 
     try:
         final_shortlist = _run_final_rerank(
@@ -486,10 +591,24 @@ def rerank_jobs_with_gemini(
             effective_model,
         )
     except Exception as exc:
+        error_message = str(exc)
         print(
-            "Warning: Gemini final reranking failed, using first-pass shortlist instead. "
-            f"{exc}"
+            "Warning: Gemini final reranking failed, not sending digest. "
+            f"{error_message}"
         )
-        return _strip_internal_fields(screened_candidates)
+        return _build_result(
+            [],
+            [],
+            "gemini_failed",
+            llm_shortlisted_jobs=0,
+            gemini_reviewed_jobs=0,
+            review_error=error_message,
+        )
 
-    return _strip_internal_fields(final_shortlist)
+    return _build_result(
+        _strip_internal_fields(final_shortlist),
+        candidate_jobs,
+        "gemini",
+        llm_shortlisted_jobs=len(final_shortlist),
+        gemini_reviewed_jobs=len(candidate_jobs),
+    )

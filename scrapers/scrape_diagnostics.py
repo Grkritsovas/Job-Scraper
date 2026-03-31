@@ -42,10 +42,29 @@ class ScrapeDiagnostics:
                 key=lambda item: (-item[1], item[0]),
             )
         ) or "-"
+        review_mode = payload.get("review_mode") or "-"
+        reviewed_jobs = payload.get("reviewed_jobs")
+        reviewed_suffix = (
+            f" reviewed={reviewed_jobs}"
+            if reviewed_jobs is not None
+            else ""
+        )
         llm_shortlisted = payload.get("llm_shortlisted_jobs")
         llm_suffix = (
             f" llm_shortlisted={llm_shortlisted}"
             if llm_shortlisted is not None
+            else ""
+        )
+        gemini_reviewed_jobs = payload.get("gemini_reviewed_jobs")
+        gemini_reviewed_suffix = (
+            f" gemini_reviewed={gemini_reviewed_jobs}"
+            if gemini_reviewed_jobs is not None
+            else ""
+        )
+        review_error = payload.get("review_error")
+        review_error_suffix = (
+            " review_error=1"
+            if review_error
             else ""
         )
         print(
@@ -55,7 +74,11 @@ class ScrapeDiagnostics:
             f"below_threshold={payload.get('below_threshold_jobs', 0)} "
             f"ranked={payload.get('ranked_jobs', 0)} "
             f"unseen={payload.get('unseen_jobs', 0)} "
+            f"review_mode={review_mode}"
+            f"{reviewed_suffix}"
             f"{llm_suffix}"
+            f"{gemini_reviewed_suffix}"
+            f"{review_error_suffix} "
             f"recipient_seen={payload.get('recipient_seen_urls', 0)} "
             f"hard_filter_reasons={formatted_reasons}"
         )

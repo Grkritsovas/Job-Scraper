@@ -61,17 +61,21 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
         return_stats=True,
     )
     unseen_jobs = [job for job in ranked_jobs if job["url"] not in seen_urls]
-    shortlisted_jobs = rerank_jobs_with_gemini(unseen_jobs, recipient_profile)
+    review_result = rerank_jobs_with_gemini(unseen_jobs, recipient_profile)
     diagnostics.record_recipient_summary(
         recipient_profile["id"],
         {
             **ranking_stats,
             "unseen_jobs": len(unseen_jobs),
-            "llm_shortlisted_jobs": len(shortlisted_jobs),
+            "review_mode": review_result["review_mode"],
+            "reviewed_jobs": len(review_result["reviewed_jobs"]),
+            "llm_shortlisted_jobs": review_result.get("llm_shortlisted_jobs"),
+            "gemini_reviewed_jobs": review_result.get("gemini_reviewed_jobs"),
+            "review_error": review_result.get("review_error"),
             "recipient_seen_urls": len(seen_urls),
         },
     )
-    return shortlisted_jobs
+    return review_result
 
 
 def send_digest(recipient_profile, jobs):
@@ -117,15 +121,18 @@ def main():
     enriched_candidates = enrich_jobs(candidates, sponsor_company_lookup)
 
     for recipient_profile in recipient_profiles:
-        ranked_jobs = select_jobs_for_recipient(
+        review_result = select_jobs_for_recipient(
             enriched_candidates,
             recipient_profile,
             storage,
             diagnostics,
         )
-        if ranked_jobs:
-            send_digest(recipient_profile, ranked_jobs)
-            storage.store_seen_jobs(recipient_profile["id"], ranked_jobs)
+        jobs_to_send = review_result["jobs_to_send"]
+        reviewed_jobs = review_result["reviewed_jobs"]
+        if jobs_to_send:
+            send_digest(recipient_profile, jobs_to_send)
+        if reviewed_jobs:
+            storage.store_seen_jobs(recipient_profile["id"], reviewed_jobs)
 
 
 if __name__ == "__main__":
