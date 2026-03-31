@@ -1,4 +1,4 @@
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import requests
 
@@ -136,9 +136,10 @@ def collect_company_jobs(target, seen_urls, diagnostics=None):
     for job in jobs:
         title = job.get("title", "")
         job_id = job.get("id")
+        quoted_company = quote(company, safe="")
         url = (
             sanitize_job_url(
-                f"https://jobs.ashbyhq.com/{company}/{job_id}",
+                f"https://jobs.ashbyhq.com/{quoted_company}/{job_id}",
                 source="ashby",
                 target_value=company,
             )

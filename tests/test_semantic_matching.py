@@ -4,13 +4,19 @@ from semantic_matching import build_profile_specs, get_hard_filter_reason, rank_
 
 
 class FakeMatcher:
+    def __init__(self):
+        self.scored_descriptions = []
+
     def score_description(self, description, profile_specs, negative_profile_texts=None):
+        self.scored_descriptions.append(description)
         top_label = profile_specs[0]["label"]
         second_label = profile_specs[1]["label"] if len(profile_specs) > 1 else top_label
-        top_score = {
-            "strong_fit": 0.56,
-            "borderline_fit": 0.46,
-        }.get(description, 0.52)
+        if "strong_fit" in description:
+            top_score = 0.56
+        elif "borderline_fit" in description:
+            top_score = 0.46
+        else:
+            top_score = 0.52
         second_score = max(0.0, top_score - 0.08)
         return {
             "profile_scores": {
@@ -176,6 +182,33 @@ class SemanticMatchingTests(unittest.TestCase):
         ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
         self.assertEqual(1, len(ranked_jobs))
         self.assertTrue(ranked_jobs[0]["description_looks_like_html"])
+
+    def test_rank_jobs_includes_title_and_strips_boilerplate_in_match_text(self):
+        matcher = FakeMatcher()
+        jobs = [
+            make_job(
+                title="Full Stack Engineer",
+                description=(
+                    "Build full-stack product features with React and Java. "
+                    "Our Commitment to Diversity, Equity, Inclusion and Belonging "
+                    "We believe attracting and retaining the best talent matters."
+                ),
+            )
+        ]
+        recipient_profile = {
+            "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
+            "min_top_score": 0.43,
+            "care_about_sponsorship": False,
+            "use_sponsor_lookup": False,
+        }
+
+        rank_jobs(jobs, recipient_profile, matcher=matcher)
+
+        self.assertEqual(1, len(matcher.scored_descriptions))
+        scored_text = matcher.scored_descriptions[0]
+        self.assertIn("Role title: Full Stack Engineer", scored_text)
+        self.assertIn("Build full-stack product features with React and Java.", scored_text)
+        self.assertNotIn("Our Commitment to Diversity", scored_text)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,40 @@ class AshbyScraperTests(unittest.TestCase):
 
     @patch("scrapers.ashby_scraper.fetch_job_description_details")
     @patch("scrapers.ashby_scraper.fetch_ashby_jobs")
+    def test_collect_company_jobs_url_encodes_company_name(
+        self,
+        mock_fetch_ashby_jobs,
+        mock_fetch_job_description_details,
+    ):
+        mock_fetch_ashby_jobs.return_value = [
+            {
+                "id": "job-1",
+                "title": "Software Engineer",
+                "locationName": "London",
+                "locationId": "london-id",
+                "secondaryLocations": [],
+            }
+        ]
+        mock_fetch_job_description_details.return_value = {
+            "description": "Build things.",
+            "status": "visible_text",
+            "looks_like_html": False,
+        }
+
+        jobs = collect_company_jobs(
+            {
+                "company": "it labs",
+                "location_ids": set(),
+                "label": "https://jobs.ashbyhq.com/it%20labs",
+            },
+            set(),
+        )
+
+        self.assertEqual(1, len(jobs))
+        self.assertEqual("https://jobs.ashbyhq.com/it%20labs/job-1", jobs[0]["url"])
+
+    @patch("scrapers.ashby_scraper.fetch_job_description_details")
+    @patch("scrapers.ashby_scraper.fetch_ashby_jobs")
     def test_collect_company_jobs_can_filter_by_exact_location_id(
         self,
         mock_fetch_ashby_jobs,

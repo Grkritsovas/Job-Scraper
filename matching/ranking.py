@@ -7,6 +7,7 @@ from matching.profile_library import (
     DEFAULT_NEGATIVE_PROFILE_TEXTS,
     build_profile_specs,
 )
+from shared.descriptions import build_matching_text
 
 
 EMBEDDING_MODEL_NAME = os.getenv(
@@ -255,8 +256,12 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
             hard_filter_reasons[hard_filter_reason] += 1
             continue
 
-        score_data = matcher.score_description(
+        match_text = build_matching_text(
+            job.get("title", ""),
             job.get("description", ""),
+        )
+        score_data = matcher.score_description(
+            match_text,
             profile_specs,
             recipient_profile.get("negative_profile_texts"),
         )

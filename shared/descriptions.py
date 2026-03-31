@@ -10,6 +10,22 @@ HEADERS = {
 }
 
 MIN_VISIBLE_TEXT_LENGTH = 200
+MATCHING_TEXT_SUFFIX_PATTERNS = [
+    re.compile(
+        r"\bour commitment to diversity, equity, inclusion(?:\s+and\s+belonging)?\b",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(r"\bfraud recruitment disclaimer\b", flags=re.IGNORECASE),
+    re.compile(r"\bequal employment opportunity\b", flags=re.IGNORECASE),
+    re.compile(
+        r"\bwe will ensure that individuals with disabilities are provided reasonable accommodation\b",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bshould you have any doubts about the authenticity\b",
+        flags=re.IGNORECASE,
+    ),
+]
 
 
 def get_visible_text(html):
@@ -19,6 +35,47 @@ def get_visible_text(html):
         tag.decompose()
 
     return soup.get_text(separator=" ", strip=True)
+
+
+def normalize_text_whitespace(text):
+    return re.sub(r"\s+", " ", (text or "")).strip()
+
+
+def _has_substantial_prefix(text, cutoff):
+    prefix = text[:cutoff].strip()
+    if len(prefix) < 40:
+        return False
+
+    return len(prefix.split()) >= 6
+
+
+def strip_matching_boilerplate(text):
+    normalized_text = normalize_text_whitespace(text)
+    if not normalized_text:
+        return ""
+
+    cutoff = len(normalized_text)
+    for pattern in MATCHING_TEXT_SUFFIX_PATTERNS:
+        match = pattern.search(normalized_text)
+        if match and _has_substantial_prefix(normalized_text, match.start()):
+            cutoff = min(cutoff, match.start())
+
+    return normalized_text[:cutoff].strip()
+
+
+def build_matching_text(title, description):
+    normalized_title = normalize_text_whitespace(title)
+    cleaned_description = strip_matching_boilerplate(description)
+    parts = []
+
+    if normalized_title:
+        parts.append(f"Role title: {normalized_title}")
+        parts.append(f"Primary role focus: {normalized_title}")
+
+    if cleaned_description:
+        parts.append(cleaned_description)
+
+    return "\n\n".join(parts).strip()
 
 
 def extract_ashby_description_text(html):
