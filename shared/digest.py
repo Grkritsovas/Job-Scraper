@@ -80,6 +80,9 @@ def build_digest_bodies(jobs, recipient_profile, max_jobs_per_email=20):
             fit_line = format_job_fit(job)
             if fit_line:
                 lines.append(f"  {fit_line}")
+            why_apply = (job.get("why_apply") or "").strip()
+            if why_apply:
+                lines.append(f"  Why apply: {why_apply}")
             if recipient_profile.get("care_about_sponsorship", False):
                 sponsorship_summary = format_sponsorship_summary(job)
                 if sponsorship_summary:

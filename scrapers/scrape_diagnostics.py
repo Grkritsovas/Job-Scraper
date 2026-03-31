@@ -42,6 +42,12 @@ class ScrapeDiagnostics:
                 key=lambda item: (-item[1], item[0]),
             )
         ) or "-"
+        llm_shortlisted = payload.get("llm_shortlisted_jobs")
+        llm_suffix = (
+            f" llm_shortlisted={llm_shortlisted}"
+            if llm_shortlisted is not None
+            else ""
+        )
         print(
             f"[ranking:{recipient_id}] "
             f"input={payload.get('input_jobs', 0)} "
@@ -49,6 +55,7 @@ class ScrapeDiagnostics:
             f"below_threshold={payload.get('below_threshold_jobs', 0)} "
             f"ranked={payload.get('ranked_jobs', 0)} "
             f"unseen={payload.get('unseen_jobs', 0)} "
+            f"{llm_suffix}"
             f"recipient_seen={payload.get('recipient_seen_urls', 0)} "
             f"hard_filter_reasons={formatted_reasons}"
         )

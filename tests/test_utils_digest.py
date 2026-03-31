@@ -116,6 +116,43 @@ class DigestFormattingTests(unittest.TestCase):
 
         self.assertIn("Fit: Data Analyst 58% | SWE 51%", bodies[0])
 
+    def test_why_apply_line_is_rendered_when_present(self):
+        jobs = [
+            {
+                "company": "Example",
+                "title": "Software Engineer",
+                "url": "https://example.com/job",
+                "location": "London",
+                "top_profile": "SWE",
+                "ranking_score": 0.84,
+                "top_score": 0.58,
+                "second_profile": "Data Analyst",
+                "second_score": 0.46,
+                "score_margin": 0.12,
+                "why_apply": (
+                    "Junior-friendly team with clear backend work. "
+                    "Your Python experience transfers well."
+                ),
+                "is_sponsor_licensed_employer": False,
+                "sponsorship_status": "unknown",
+                "sponsor_company_metadata": {},
+            }
+        ]
+        recipient_profile = {
+            "care_about_sponsorship": False,
+            "use_sponsor_lookup": False,
+        }
+
+        bodies = build_digest_bodies(jobs, recipient_profile)
+
+        self.assertIn(
+            (
+                "Why apply: Junior-friendly team with clear backend work. "
+                "Your Python experience transfers well."
+            ),
+            bodies[0],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

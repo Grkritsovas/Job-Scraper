@@ -21,6 +21,7 @@ class RecipientProfilesTests(unittest.TestCase):
                 "salary_penalty_max": 0.35,
                 "care_about_sponsorship": True,
                 "use_sponsor_lookup": True,
+                "cv_summary": "Strong Python and ML project experience for junior roles.",
             }
         ]
 
@@ -43,6 +44,10 @@ class RecipientProfilesTests(unittest.TestCase):
         self.assertEqual(0.35, profiles[0]["salary_penalty_max"])
         self.assertTrue(profiles[0]["care_about_sponsorship"])
         self.assertTrue(profiles[0]["use_sponsor_lookup"])
+        self.assertEqual(
+            "Strong Python and ML project experience for junior roles.",
+            profiles[0]["cv_summary"],
+        )
 
     def test_falls_back_to_single_recipient_from_sender_email(self):
         with patch.dict(
@@ -59,6 +64,7 @@ class RecipientProfilesTests(unittest.TestCase):
             ["swe", "data_science", "ai_ml_engineer"],
             profiles[0]["semantic_profiles"],
         )
+        self.assertEqual("", profiles[0]["cv_summary"])
 
 
 if __name__ == "__main__":

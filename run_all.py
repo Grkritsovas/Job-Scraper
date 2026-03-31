@@ -3,6 +3,7 @@ import os
 from config.recipient_profiles import load_recipient_profiles
 from config.target_config import load_configured_targets
 from emailer import send_email
+from matching.gemini_rerank import rerank_jobs_with_gemini
 from matching.ranking import rank_jobs
 from scrapers.ashby_scraper import collect_jobs as collect_ashby_jobs
 from scrapers.greenhouse_scraper import collect_jobs as collect_greenhouse_jobs
@@ -60,15 +61,17 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
         return_stats=True,
     )
     unseen_jobs = [job for job in ranked_jobs if job["url"] not in seen_urls]
+    shortlisted_jobs = rerank_jobs_with_gemini(unseen_jobs, recipient_profile)
     diagnostics.record_recipient_summary(
         recipient_profile["id"],
         {
             **ranking_stats,
             "unseen_jobs": len(unseen_jobs),
+            "llm_shortlisted_jobs": len(shortlisted_jobs),
             "recipient_seen_urls": len(seen_urls),
         },
     )
-    return unseen_jobs
+    return shortlisted_jobs
 
 
 def send_digest(recipient_profile, jobs):
