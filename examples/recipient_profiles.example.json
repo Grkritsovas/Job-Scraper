@@ -16,8 +16,8 @@
     "use_sponsor_lookup": false
   },
   {
-    "id": "kamila",
-    "email": "other@example.com",
+    "id": "maria",
+    "email": "maria@example.com",
     "semantic_profiles": ["marketing_assistant", "ai_ml"],
     "semantic_profile_texts": {
       "marketing_assistant": "Junior marketing and communications professional with experience supporting marketing teams in structured business environments. Best aligned with early-career marketing assistant, communications support, campaign operations, coordination, and content-support roles.",
