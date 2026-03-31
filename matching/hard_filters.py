@@ -21,7 +21,7 @@ EXPERIENCE_PATTERNS = [
     ),
     re.compile(r"\bminimum\s+(\d+)\s*(?:years?|yrs?|yoe)\b", flags=re.IGNORECASE),
     re.compile(
-        r"\b(\d+)\s*-\s*(\d+)\s*(?:years?|yrs?|yoe)\b",
+        r"\b(\d+)\s*[-–—]\s*(\d+)\s*(?:years?|yrs?|yoe)\b",
         flags=re.IGNORECASE,
     ),
     re.compile(
@@ -30,6 +30,16 @@ EXPERIENCE_PATTERNS = [
     ),
     re.compile(
         r"\b(\d+)\s*(?:years?|yrs?|yoe)\s+(?:of\s+)?experience\b",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(\d+)\s*[-–—]\s*(\d+)\s*(?:years?|yrs?|yoe)\s+"
+        r"(?:of\s+)?(?:[a-z]+\s+){0,6}experience\b",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(\d+)\s*(?:years?|yrs?|yoe)\s+(?:of\s+)?"
+        r"(?:[a-z]+\s+){0,6}experience\b",
         flags=re.IGNORECASE,
     ),
 ]

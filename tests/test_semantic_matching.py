@@ -81,6 +81,17 @@ class SemanticMatchingTests(unittest.TestCase):
         )
         self.assertEqual("experience", reason)
 
+    def test_get_hard_filter_reason_rejects_professional_experience_range(self):
+        reason = get_hard_filter_reason(
+            make_job(
+                description=(
+                    "Qualifications: 3–7 years of professional software "
+                    "engineering experience."
+                ),
+            ),
+        )
+        self.assertEqual("experience", reason)
+
     def test_sponsorship_status_is_info_only_for_ranking(self):
         jobs = [
             make_job(
