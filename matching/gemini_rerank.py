@@ -9,7 +9,42 @@ DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 DEFAULT_TOP_N = 100
 DEFAULT_BATCH_SIZE = 10
 DEFAULT_DESCRIPTION_CHARS = 1600
-RESPONSE_JSON_SCHEMA = {
+DEFAULT_EVIDENCE_ITEMS = 2
+PASS_ONE_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "candidates": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "job_url": {"type": "string"},
+                    "matched_profile": {"type": "string"},
+                    "fit_score": {"type": "integer"},
+                    "why_apply": {"type": "string"},
+                    "supporting_evidence": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "mismatch_evidence": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": [
+                    "job_url",
+                    "matched_profile",
+                    "fit_score",
+                    "why_apply",
+                    "supporting_evidence",
+                    "mismatch_evidence",
+                ],
+            },
+        }
+    },
+    "required": ["candidates"],
+}
+PASS_TWO_JSON_SCHEMA = {
     "type": "object",
     "properties": {
         "shortlisted_jobs": {
@@ -92,7 +127,7 @@ def _build_job_payload(job, description_chars):
     }
 
 
-def _build_prompt(recipient_profile, jobs, description_chars):
+def _build_candidate_context(recipient_profile):
     profiles = [
         {
             "label": spec["label"],
@@ -105,43 +140,101 @@ def _build_prompt(recipient_profile, jobs, description_chars):
         for text in recipient_profile.get("negative_profile_texts", [])
         if normalize_text_whitespace(text)
     ]
+    return {
+        "target_profiles": profiles,
+        "cv_summary": normalize_text_whitespace(recipient_profile.get("cv_summary", "")),
+        "negative_profile_texts": negative_profile_texts,
+    }
+
+
+def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
     candidate_payload = {
         "instructions": {
             "primary_source_of_truth": (
                 "The target profiles are the main decision rule. "
-                "Only shortlist jobs that clearly fit at least one target profile."
+                "A job must clearly fit at least one target profile to be kept."
             ),
             "cv_usage": (
                 "The CV summary is supporting context only. "
                 "Use it to judge transferable evidence, not to override the target profiles."
             ),
             "selection_rule": (
-                "Be strict. Do not shortlist roles just because they sound broadly "
-                "technical, analytical, or corporate."
+                "False positives are worse than false negatives. "
+                "Do not keep a role unless the fit is clear."
+            ),
+            "comparison_rule": (
+                "Judge each role on its own merits. "
+                "If none are clearly good, return an empty list."
+            ),
+            "evidence_rule": (
+                "supporting_evidence and mismatch_evidence must contain short exact or "
+                "near-exact snippets from the provided job text."
+            ),
+            "profile_rule": (
+                "matched_profile must be exactly one of the provided target profile labels."
             ),
             "level_preference": (
                 "Prefer junior, graduate, grad, and entry-level roles. "
                 "Be cautious with manager, lead, senior, and staff roles."
             ),
             "output_rule": (
-                "Return only shortlisted jobs. If none should be kept, return an empty list. "
+                "Return only credible candidates. "
                 "For why_apply, write at most 2 short simple sentences."
             ),
         },
-        "candidate": {
-            "target_profiles": profiles,
-            "cv_summary": normalize_text_whitespace(recipient_profile.get("cv_summary", "")),
-            "negative_profile_texts": negative_profile_texts,
-        },
-        "jobs": [
-            _build_job_payload(job, description_chars)
-            for job in jobs
-        ],
+        "candidate": _build_candidate_context(recipient_profile),
+        "jobs": [_build_job_payload(job, description_chars) for job in jobs],
     }
     return (
-        "Rerank these jobs for one candidate. "
-        "Return only the shortlisted jobs as JSON matching the schema.\n\n"
+        "Screen these jobs for one candidate. "
+        "Return only credible candidates as JSON matching the schema.\n\n"
         f"{json.dumps(candidate_payload, ensure_ascii=False, indent=2)}"
+    )
+
+
+def _build_pass_two_prompt(recipient_profile, candidates):
+    candidate_cards = [
+        {
+            "url": candidate["url"],
+            "company": normalize_text_whitespace(candidate.get("company", "")),
+            "title": normalize_text_whitespace(candidate.get("title", "")),
+            "location": normalize_text_whitespace(candidate.get("location", "")),
+            "matched_profile": candidate.get("llm_matched_profile", ""),
+            "batch_fit_score": candidate.get("llm_fit_score", 0),
+            "semantic_fit_hint": _fit_hint(candidate),
+            "why_apply": normalize_text_whitespace(candidate.get("why_apply", "")),
+            "supporting_evidence": list(candidate.get("supporting_evidence", [])),
+            "mismatch_evidence": list(candidate.get("mismatch_evidence", [])),
+        }
+        for candidate in candidates
+    ]
+    payload = {
+        "instructions": {
+            "task": (
+                "Compare these already-screened candidates globally and keep only the "
+                "strongest final matches."
+            ),
+            "selection_rule": (
+                "False positives are worse than false negatives. "
+                "If none are clearly strong matches, return an empty list."
+            ),
+            "comparison_rule": (
+                "Use the candidate profiles as the main rule. "
+                "Jobs with weak evidence, notable mismatches, or stretched reasoning should be dropped."
+            ),
+            "output_rule": (
+                "Return only the final shortlist as JSON matching the schema. "
+                "For why_apply, write at most 2 short simple sentences."
+            ),
+        },
+        "candidate": _build_candidate_context(recipient_profile),
+        "screened_candidates": candidate_cards,
+    }
+    return (
+        "Finalize the shortlist for one candidate. "
+        "These jobs already passed a first screening round. "
+        "Now compare them against each other and keep only the genuinely strong matches.\n\n"
+        f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
 
 
@@ -160,12 +253,166 @@ def _build_client(api_key=None):
     return genai.Client(api_key=effective_api_key)
 
 
-def _parse_shortlisted_jobs(response_text):
-    payload = json.loads(response_text or "{}")
-    shortlisted_jobs = payload.get("shortlisted_jobs")
-    if isinstance(shortlisted_jobs, list):
-        return shortlisted_jobs
-    return []
+def _generate_json_response(client, model, prompt, schema):
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config={
+            "response_mime_type": "application/json",
+            "response_json_schema": schema,
+        },
+    )
+    return json.loads(getattr(response, "text", "") or "{}")
+
+
+def _normalize_string_list(values):
+    if not isinstance(values, list):
+        return []
+
+    normalized = []
+    for value in values[:DEFAULT_EVIDENCE_ITEMS]:
+        cleaned = normalize_text_whitespace(value)
+        if cleaned:
+            normalized.append(cleaned)
+    return normalized
+
+
+def _run_batch_screening(
+    candidate_jobs,
+    recipient_profile,
+    client,
+    model,
+    batch_size,
+    description_chars,
+):
+    original_indexes = {
+        job["url"]: index
+        for index, job in enumerate(candidate_jobs)
+        if job.get("url")
+    }
+    screened_candidates = []
+    seen_urls = set()
+
+    for batch in _chunked(candidate_jobs, batch_size):
+        batch_by_url = {
+            job["url"]: job
+            for job in batch
+            if job.get("url")
+        }
+        prompt = _build_pass_one_prompt(
+            recipient_profile,
+            batch,
+            description_chars,
+        )
+        payload = _generate_json_response(
+            client,
+            model,
+            prompt,
+            PASS_ONE_JSON_SCHEMA,
+        )
+        for item in payload.get("candidates", []):
+            job_url = normalize_text_whitespace(item.get("job_url", ""))
+            if not job_url or job_url in seen_urls or job_url not in batch_by_url:
+                continue
+
+            matched_profile = normalize_text_whitespace(item.get("matched_profile", ""))
+            if not matched_profile:
+                continue
+
+            try:
+                fit_score = int(item.get("fit_score", 0))
+            except (TypeError, ValueError):
+                fit_score = 0
+            fit_score = max(0, min(100, fit_score))
+            why_apply = normalize_text_whitespace(item.get("why_apply", ""))
+            supporting_evidence = _normalize_string_list(item.get("supporting_evidence"))
+            mismatch_evidence = _normalize_string_list(item.get("mismatch_evidence"))
+
+            original_job = batch_by_url[job_url]
+            screened_candidates.append(
+                {
+                    **original_job,
+                    "semantic_ranking_score": original_job.get("ranking_score"),
+                    "llm_matched_profile": matched_profile,
+                    "ranking_score": fit_score / 100.0,
+                    "llm_fit_score": fit_score,
+                    "why_apply": why_apply,
+                    "supporting_evidence": supporting_evidence,
+                    "mismatch_evidence": mismatch_evidence,
+                    "_original_index": original_indexes.get(job_url, 10**9),
+                }
+            )
+            seen_urls.add(job_url)
+
+    screened_candidates.sort(
+        key=lambda job: (
+            -job.get("llm_fit_score", 0),
+            job.get("_original_index", 10**9),
+        )
+    )
+    return screened_candidates
+
+
+def _run_final_rerank(candidates, recipient_profile, client, model):
+    if not candidates:
+        return []
+
+    candidates_by_url = {
+        candidate["url"]: candidate
+        for candidate in candidates
+        if candidate.get("url")
+    }
+    prompt = _build_pass_two_prompt(recipient_profile, candidates)
+    payload = _generate_json_response(
+        client,
+        model,
+        prompt,
+        PASS_TWO_JSON_SCHEMA,
+    )
+    final_shortlist = []
+    seen_urls = set()
+
+    for item in payload.get("shortlisted_jobs", []):
+        job_url = normalize_text_whitespace(item.get("job_url", ""))
+        if not job_url or job_url in seen_urls or job_url not in candidates_by_url:
+            continue
+
+        try:
+            fit_score = int(item.get("fit_score", 0))
+        except (TypeError, ValueError):
+            fit_score = 0
+        fit_score = max(0, min(100, fit_score))
+        why_apply = normalize_text_whitespace(item.get("why_apply", ""))
+
+        original_candidate = candidates_by_url[job_url]
+        final_shortlist.append(
+            {
+                **original_candidate,
+                "ranking_score": fit_score / 100.0,
+                "llm_fit_score": fit_score,
+                "why_apply": why_apply or original_candidate.get("why_apply", ""),
+            }
+        )
+        seen_urls.add(job_url)
+
+    final_shortlist.sort(
+        key=lambda job: (
+            -job.get("llm_fit_score", 0),
+            job.get("_original_index", 10**9),
+        )
+    )
+    return final_shortlist
+
+
+def _strip_internal_fields(jobs):
+    return [
+        {
+            key: value
+            for key, value in job.items()
+            if not key.startswith("_")
+        }
+        for job in jobs
+    ]
 
 
 def rerank_jobs_with_gemini(
@@ -215,65 +462,34 @@ def rerank_jobs_with_gemini(
     if client is None:
         return candidate_jobs
 
-    original_indexes = {
-        job["url"]: index
-        for index, job in enumerate(candidate_jobs)
-        if job.get("url")
-    }
-    shortlisted_jobs = []
-    seen_urls = set()
-
     try:
-        for batch in _chunked(candidate_jobs, effective_batch_size):
-            batch_by_url = {
-                job["url"]: job
-                for job in batch
-                if job.get("url")
-            }
-            prompt = _build_prompt(
-                recipient_profile,
-                batch,
-                effective_description_chars,
-            )
-            response = client.models.generate_content(
-                model=effective_model,
-                contents=prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_json_schema": RESPONSE_JSON_SCHEMA,
-                },
-            )
-            for item in _parse_shortlisted_jobs(getattr(response, "text", "")):
-                job_url = normalize_text_whitespace(item.get("job_url", ""))
-                if not job_url or job_url in seen_urls or job_url not in batch_by_url:
-                    continue
-
-                try:
-                    fit_score = int(item.get("fit_score", 0))
-                except (TypeError, ValueError):
-                    fit_score = 0
-                fit_score = max(0, min(100, fit_score))
-                why_apply = normalize_text_whitespace(item.get("why_apply", ""))
-
-                original_job = batch_by_url[job_url]
-                shortlisted_jobs.append(
-                    {
-                        **original_job,
-                        "semantic_ranking_score": original_job.get("ranking_score"),
-                        "ranking_score": fit_score / 100.0,
-                        "llm_fit_score": fit_score,
-                        "why_apply": why_apply,
-                    }
-                )
-                seen_urls.add(job_url)
+        screened_candidates = _run_batch_screening(
+            candidate_jobs,
+            recipient_profile,
+            client,
+            effective_model,
+            effective_batch_size,
+            effective_description_chars,
+        )
     except Exception as exc:
-        print(f"Warning: Gemini reranking failed, using semantic shortlist instead. {exc}")
+        print(f"Warning: Gemini batch screening failed, using semantic shortlist instead. {exc}")
         return candidate_jobs
 
-    shortlisted_jobs.sort(
-        key=lambda job: (
-            -job.get("llm_fit_score", 0),
-            original_indexes.get(job.get("url"), 10**9),
+    if not screened_candidates:
+        return []
+
+    try:
+        final_shortlist = _run_final_rerank(
+            screened_candidates,
+            recipient_profile,
+            client,
+            effective_model,
         )
-    )
-    return shortlisted_jobs
+    except Exception as exc:
+        print(
+            "Warning: Gemini final reranking failed, using first-pass shortlist instead. "
+            f"{exc}"
+        )
+        return _strip_internal_fields(screened_candidates)
+
+    return _strip_internal_fields(final_shortlist)
