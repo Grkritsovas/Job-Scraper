@@ -18,9 +18,7 @@ EMBEDDING_MODEL_NAME = os.getenv(
 )
 DEFAULT_MIN_PROFILE_SCORE = float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.42"))
 SENIORITY_PENALTY_FLOOR = 0.35
-DEFAULT_SENIORITY_PENALTY_WEIGHT = float(
-    os.getenv("JOB_SCRAPER_SENIORITY_PENALTY_WEIGHT", "0.18")
-)
+DEFAULT_SENIORITY_PENALTY_WEIGHT = 0.18
 DEFAULT_SALARY_PENALTY_MAX = 0.35
 DEFAULT_JUNIOR_BOOST_MULTIPLIER = 1.2
 DEFAULT_JUNIOR_BOOST_TERMS = (
@@ -163,33 +161,29 @@ def format_fit_summary(ranked_profiles):
     )
 
 
-def get_junior_boost_multiplier():
-    raw_value = os.getenv("JOB_SCRAPER_JUNIOR_BOOST_MULTIPLIER", "").strip()
-    if not raw_value:
+def get_junior_boost_multiplier(recipient_profile):
+    raw_value = recipient_profile.get("junior_boost_multiplier")
+    if raw_value is None:
         return DEFAULT_JUNIOR_BOOST_MULTIPLIER
 
     try:
         return max(1.0, float(raw_value))
-    except ValueError:
+    except (TypeError, ValueError):
         return DEFAULT_JUNIOR_BOOST_MULTIPLIER
 
 
-def get_junior_boost_terms():
-    raw_value = os.getenv("JOB_SCRAPER_JUNIOR_BOOST_TERMS", "").strip()
+def get_junior_boost_terms(recipient_profile):
+    raw_value = recipient_profile.get("junior_boost_terms")
     if not raw_value:
         return list(DEFAULT_JUNIOR_BOOST_TERMS)
 
-    terms = [
-        term.strip().lower()
-        for term in raw_value.split(",")
-        if term.strip()
-    ]
+    terms = [str(term).strip().lower() for term in raw_value if str(term).strip()]
     return terms or list(DEFAULT_JUNIOR_BOOST_TERMS)
 
 
-def get_junior_title_pattern():
+def get_junior_title_pattern(recipient_profile):
     term_patterns = []
-    for term in get_junior_boost_terms():
+    for term in get_junior_boost_terms(recipient_profile):
         escaped = re.escape(term)
         escaped = escaped.replace(r"\ ", r"[\s-]+")
         escaped = escaped.replace(r"\-", r"[\s-]+")
@@ -201,16 +195,16 @@ def get_junior_title_pattern():
     )
 
 
-def title_gets_junior_boost(title):
-    return bool(get_junior_title_pattern().search(title or ""))
+def title_gets_junior_boost(title, recipient_profile):
+    return bool(get_junior_title_pattern(recipient_profile).search(title or ""))
 
 
-def apply_title_boost(score_data, job):
-    if not title_gets_junior_boost(job.get("title", "")):
+def apply_title_boost(score_data, job, recipient_profile):
+    if not title_gets_junior_boost(job.get("title", ""), recipient_profile):
         score_data["title_boost_multiplier"] = 1.0
         return score_data
 
-    multiplier = get_junior_boost_multiplier()
+    multiplier = get_junior_boost_multiplier(recipient_profile)
     boosted_profile_scores = {
         label: min(1.0, score * multiplier)
         for label, score in score_data["profile_scores"].items()
@@ -353,7 +347,7 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
             profile_specs,
             recipient_profile.get("negative_profile_texts"),
         )
-        score_data = apply_title_boost(score_data, job)
+        score_data = apply_title_boost(score_data, job, recipient_profile)
         ranking_score, seniority_penalty_applied = apply_seniority_penalty(
             score_data,
             recipient_profile,

@@ -5,6 +5,17 @@ from config.config_loader import load_json_config
 from matching.profile_library import DEFAULT_SEMANTIC_PROFILES
 
 
+DEFAULT_SENIORITY_PENALTY_WEIGHT = 0.18
+DEFAULT_JUNIOR_BOOST_MULTIPLIER = 1.2
+DEFAULT_JUNIOR_BOOST_TERMS = [
+    "junior",
+    "grad",
+    "graduate",
+    "entry level",
+    "entry-level",
+]
+
+
 def _slugify(value):
     normalized = re.sub(r"[^a-z0-9]+", "_", (value or "").lower()).strip("_")
     return normalized or "recipient"
@@ -20,9 +31,9 @@ def _default_profile():
             "semantic_profile_texts": {},
             "min_top_score": float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.42")),
             "negative_profile_texts": [],
-            "seniority_penalty_weight": float(
-                os.getenv("JOB_SCRAPER_SENIORITY_PENALTY_WEIGHT", "0.18")
-            ),
+            "seniority_penalty_weight": DEFAULT_SENIORITY_PENALTY_WEIGHT,
+            "junior_boost_multiplier": DEFAULT_JUNIOR_BOOST_MULTIPLIER,
+            "junior_boost_terms": list(DEFAULT_JUNIOR_BOOST_TERMS),
             "preferred_salary_max_gbp": None,
             "salary_hard_cap_gbp": None,
             "salary_penalty_max": 0.35,
@@ -51,8 +62,17 @@ def _normalize_profile(profile, index):
         "seniority_penalty_weight": float(
             profile.get(
                 "seniority_penalty_weight",
-                os.getenv("JOB_SCRAPER_SENIORITY_PENALTY_WEIGHT", "0.18"),
+                DEFAULT_SENIORITY_PENALTY_WEIGHT,
             )
+        ),
+        "junior_boost_multiplier": float(
+            profile.get(
+                "junior_boost_multiplier",
+                DEFAULT_JUNIOR_BOOST_MULTIPLIER,
+            )
+        ),
+        "junior_boost_terms": list(
+            profile.get("junior_boost_terms") or DEFAULT_JUNIOR_BOOST_TERMS
         ),
         "preferred_salary_max_gbp": (
             float(profile["preferred_salary_max_gbp"])

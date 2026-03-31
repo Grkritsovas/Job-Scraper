@@ -22,6 +22,8 @@ class RecipientProfilesTests(unittest.TestCase):
                 "care_about_sponsorship": True,
                 "use_sponsor_lookup": True,
                 "cv_summary": "Strong Python and ML project experience for junior roles.",
+                "junior_boost_multiplier": 1.15,
+                "junior_boost_terms": ["junior", "graduate", "apprentice"],
             }
         ]
 
@@ -48,6 +50,11 @@ class RecipientProfilesTests(unittest.TestCase):
             "Strong Python and ML project experience for junior roles.",
             profiles[0]["cv_summary"],
         )
+        self.assertEqual(1.15, profiles[0]["junior_boost_multiplier"])
+        self.assertEqual(
+            ["junior", "graduate", "apprentice"],
+            profiles[0]["junior_boost_terms"],
+        )
 
     def test_falls_back_to_single_recipient_from_sender_email(self):
         with patch.dict(
@@ -65,6 +72,11 @@ class RecipientProfilesTests(unittest.TestCase):
             profiles[0]["semantic_profiles"],
         )
         self.assertEqual("", profiles[0]["cv_summary"])
+        self.assertEqual(1.2, profiles[0]["junior_boost_multiplier"])
+        self.assertEqual(
+            ["junior", "grad", "graduate", "entry level", "entry-level"],
+            profiles[0]["junior_boost_terms"],
+        )
 
 
 if __name__ == "__main__":
