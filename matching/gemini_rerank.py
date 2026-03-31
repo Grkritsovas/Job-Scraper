@@ -9,7 +9,6 @@ DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 DEFAULT_TOP_N = 100
 DEFAULT_BATCH_SIZE = 10
 DEFAULT_DESCRIPTION_CHARS = 1600
-FALSEY_ENV_VALUES = {"", "0", "false", "no", "off"}
 RESPONSE_JSON_SCHEMA = {
     "type": "object",
     "properties": {
@@ -31,11 +30,7 @@ RESPONSE_JSON_SCHEMA = {
 
 
 def gemini_rerank_enabled():
-    raw_value = os.getenv("JOB_SCRAPER_LLM_RERANK_ENABLED")
-    if raw_value is None:
-        return bool(os.getenv("GEMINI_API_KEY", "").strip())
-
-    return raw_value.strip().lower() not in FALSEY_ENV_VALUES
+    return bool(os.getenv("GEMINI_API_KEY", "").strip())
 
 
 def _safe_int_env(name, default):
