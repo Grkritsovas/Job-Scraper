@@ -225,7 +225,7 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "For why_apply, write at most 2 short simple sentences."
         ),
     }
-    if recipient_profile.get("care_about_sponsorship", False):
+    if recipient_profile.get("care_about_hard_eligibility", False):
         instructions["eligibility_rule"] = (
             "Reject roles with hard eligibility requirements the candidate is unlikely to meet. "
             "This includes SC clearance, DV clearance, security vetting, nationality or citizenship restrictions, "
@@ -293,7 +293,7 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "For why_apply, write at most 2 short simple sentences."
         ),
     }
-    if recipient_profile.get("care_about_sponsorship", False):
+    if recipient_profile.get("care_about_hard_eligibility", False):
         instructions["eligibility_rule"] = (
             "Reject roles with hard eligibility requirements the candidate is unlikely to meet. "
             "This includes SC clearance, DV clearance, security vetting, nationality or citizenship restrictions, "

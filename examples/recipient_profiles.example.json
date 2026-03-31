@@ -16,6 +16,7 @@
     "salary_hard_cap_gbp": 70000,
     "salary_penalty_max": 0.35,
     "care_about_sponsorship": false,
+    "care_about_hard_eligibility": false,
     "use_sponsor_lookup": false
   },
   {
@@ -38,6 +39,7 @@
     "salary_hard_cap_gbp": 70000,
     "salary_penalty_max": 0.35,
     "care_about_sponsorship": true,
+    "care_about_hard_eligibility": true,
     "use_sponsor_lookup": true
   }
 ]

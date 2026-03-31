@@ -35,6 +35,7 @@ Common ranking and formatting fields:
 - `salary_hard_cap_gbp`
 - `salary_penalty_max`
 - `care_about_sponsorship`
+- `care_about_hard_eligibility`
 - `use_sponsor_lookup`
 
 Practical notes:

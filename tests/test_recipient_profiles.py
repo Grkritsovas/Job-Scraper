@@ -20,6 +20,7 @@ class RecipientProfilesTests(unittest.TestCase):
                 "salary_hard_cap_gbp": 50000,
                 "salary_penalty_max": 0.35,
                 "care_about_sponsorship": True,
+                "care_about_hard_eligibility": True,
                 "use_sponsor_lookup": True,
                 "cv_summary": "Strong Python and ML project experience for junior roles.",
                 "junior_boost_multiplier": 1.15,
@@ -45,6 +46,7 @@ class RecipientProfilesTests(unittest.TestCase):
         self.assertEqual(50000.0, profiles[0]["salary_hard_cap_gbp"])
         self.assertEqual(0.35, profiles[0]["salary_penalty_max"])
         self.assertTrue(profiles[0]["care_about_sponsorship"])
+        self.assertTrue(profiles[0]["care_about_hard_eligibility"])
         self.assertTrue(profiles[0]["use_sponsor_lookup"])
         self.assertEqual(
             "Strong Python and ML project experience for junior roles.",
@@ -72,6 +74,7 @@ class RecipientProfilesTests(unittest.TestCase):
             profiles[0]["semantic_profiles"],
         )
         self.assertEqual("", profiles[0]["cv_summary"])
+        self.assertFalse(profiles[0]["care_about_hard_eligibility"])
         self.assertEqual(1.2, profiles[0]["junior_boost_multiplier"])
         self.assertEqual(
             ["junior", "grad", "graduate", "entry level", "entry-level"],

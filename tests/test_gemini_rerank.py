@@ -264,7 +264,7 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertEqual(7, len(result["reviewed_jobs"]))
         self.assertEqual("https://example.com/job-7", result["jobs_to_send"][-1]["url"])
 
-    def test_rerank_only_includes_eligibility_rule_when_sponsorship_matters(self):
+    def test_rerank_only_includes_eligibility_rule_when_hard_eligibility_matters(self):
         jobs = [make_job(1)]
         base_profile = {
             "semantic_profiles": ["swe"],
@@ -326,14 +326,14 @@ class GeminiRerankTests(unittest.TestCase):
         with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True):
             rerank_jobs_with_gemini(
                 jobs,
-                {**base_profile, "care_about_sponsorship": False},
+                {**base_profile, "care_about_hard_eligibility": False},
                 client=client_false,
                 top_n=1,
                 batch_size=10,
             )
             rerank_jobs_with_gemini(
                 jobs,
-                {**base_profile, "care_about_sponsorship": True},
+                {**base_profile, "care_about_hard_eligibility": True},
                 client=client_true,
                 top_n=1,
                 batch_size=10,

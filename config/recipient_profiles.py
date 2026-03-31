@@ -38,6 +38,7 @@ def _default_profile():
             "salary_hard_cap_gbp": None,
             "salary_penalty_max": 0.35,
             "care_about_sponsorship": False,
+            "care_about_hard_eligibility": False,
             "use_sponsor_lookup": False,
             "cv_summary": "",
         }
@@ -86,6 +87,9 @@ def _normalize_profile(profile, index):
         ),
         "salary_penalty_max": float(profile.get("salary_penalty_max", 0.35)),
         "care_about_sponsorship": bool(profile.get("care_about_sponsorship", False)),
+        "care_about_hard_eligibility": bool(
+            profile.get("care_about_hard_eligibility", False)
+        ),
         "use_sponsor_lookup": bool(profile.get("use_sponsor_lookup", False)),
         "cv_summary": str(
             profile.get("cv_summary")
