@@ -123,6 +123,29 @@ class SemanticMatchingTests(unittest.TestCase):
         ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
         self.assertEqual([], ranked_jobs)
 
+    def test_junior_title_boost_can_push_borderline_match_above_threshold(self):
+        jobs = [
+            make_job(
+                title="Graduate Data Analyst",
+                url="https://example.com/graduate-borderline",
+                description="borderline_fit",
+            )
+        ]
+        recipient_profile = {
+            "semantic_profiles": ["data_analyst", "data_science", "ai_ml_engineer"],
+            "min_top_score": 0.47,
+            "negative_profile_texts": [],
+            "seniority_penalty_weight": 0.18,
+            "care_about_sponsorship": False,
+            "use_sponsor_lookup": False,
+        }
+
+        ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
+
+        self.assertEqual(1, len(ranked_jobs))
+        self.assertAlmostEqual(0.552, ranked_jobs[0]["top_score"])
+        self.assertEqual(1.2, ranked_jobs[0]["title_boost_multiplier"])
+
     def test_recipient_can_disable_seniority_penalty(self):
         jobs = [make_job(url="https://example.com/soft-penalty")]
         recipient_profile = {

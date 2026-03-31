@@ -3,7 +3,7 @@ import re
 from collections import Counter
 
 from matching.hard_filters import get_hard_filter_reason
-from matching.models import ALL_MPNET_BASE_V2
+from matching.models import ALL_MINILM_L6_V2
 from matching.profile_library import (
     DEFAULT_NEGATIVE_PROFILE_TEXTS,
     build_profile_specs,
@@ -12,16 +12,22 @@ from shared.descriptions import build_matching_text
 
 
 # Change this assignment to swap the default embedding model in code.
-SELECTED_EMBEDDING_MODEL = ALL_MPNET_BASE_V2
+SELECTED_EMBEDDING_MODEL = ALL_MINILM_L6_V2
 EMBEDDING_MODEL_NAME = os.getenv(
     "JOB_SCRAPER_EMBEDDING_MODEL", SELECTED_EMBEDDING_MODEL.model_name
 )
-DEFAULT_MIN_PROFILE_SCORE = float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.43"))
+DEFAULT_MIN_PROFILE_SCORE = float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.42"))
 SENIORITY_PENALTY_FLOOR = 0.35
 DEFAULT_SENIORITY_PENALTY_WEIGHT = float(
     os.getenv("JOB_SCRAPER_SENIORITY_PENALTY_WEIGHT", "0.18")
 )
 DEFAULT_SALARY_PENALTY_MAX = 0.35
+JUNIOR_TITLE_BOOST_MULTIPLIER = 1.2
+
+JUNIOR_TITLE_PATTERN = re.compile(
+    r"\b(junior|grad|graduate|entry[\s-]?level)\b",
+    flags=re.IGNORECASE,
+)
 
 SALARY_RANGE_PATTERNS = [
     re.compile(
@@ -155,6 +161,45 @@ def format_fit_summary(ranked_profiles):
     )
 
 
+def title_gets_junior_boost(title):
+    return bool(JUNIOR_TITLE_PATTERN.search(title or ""))
+
+
+def apply_title_boost(score_data, job):
+    if not title_gets_junior_boost(job.get("title", "")):
+        score_data["title_boost_multiplier"] = 1.0
+        return score_data
+
+    multiplier = JUNIOR_TITLE_BOOST_MULTIPLIER
+    boosted_profile_scores = {
+        label: min(1.0, score * multiplier)
+        for label, score in score_data["profile_scores"].items()
+    }
+    ranked_profiles = sorted(
+        boosted_profile_scores.items(),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+
+    top_profile, top_score = ranked_profiles[0]
+    if len(ranked_profiles) > 1:
+        second_profile, second_score = ranked_profiles[1]
+    else:
+        second_profile, second_score = top_profile, 0.0
+
+    return {
+        **score_data,
+        "profile_scores": boosted_profile_scores,
+        "top_profile": top_profile,
+        "top_score": top_score,
+        "second_profile": second_profile,
+        "second_score": second_score,
+        "score_margin": top_score - second_score,
+        "fit_summary": format_fit_summary(ranked_profiles),
+        "title_boost_multiplier": multiplier,
+    }
+
+
 def apply_seniority_penalty(score_data, recipient_profile):
     seniority_penalty_weight = float(
         recipient_profile.get(
@@ -268,6 +313,7 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
             profile_specs,
             recipient_profile.get("negative_profile_texts"),
         )
+        score_data = apply_title_boost(score_data, job)
         ranking_score, seniority_penalty_applied = apply_seniority_penalty(
             score_data,
             recipient_profile,
