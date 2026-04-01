@@ -1,0 +1,25 @@
+Marshmallow [Sponsor-licensed]
+- Junior Software Engineer | London
+  Fit: SWE 86% | Data Science 58%
+  Why apply: Clear junior engineering scope with supportive delivery work. Your Python and software project background transfer well.
+  Sponsorship: explicit yes
+https://example.com/marshmallow-junior-software-engineer
+
+Kpler
+- Data Analyst | London
+  Fit: Data Analyst 71% | Data Science 63%
+  Why apply: Hands-on analytical role with clear reporting and data interpretation work. It looks aligned with structured problem solving rather than ownership-heavy delivery.
+https://example.com/kpler-data-analyst
+
+Multiverse
+- AI Coach | London, Remote (UK)
+  Fit: AI/ML 62% | Data Science 55%
+  Why apply: AI-adjacent role with practical technical context and training structure. It could be a reasonable stretch if you want something less delivery-heavy.
+  Sponsorship: explicit no
+https://example.com/multiverse-ai-coach
+
+Thought Machine
+- Backend Engineer | London
+  Fit: SWE 54% | AI/ML 43%
+  Why apply: This is a weaker but still plausible engineering match. The role looks more backend-focused and less junior-coded than the top cards.
+https://example.com/thought-machine-backend-engineer
