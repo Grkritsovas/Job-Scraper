@@ -10,7 +10,7 @@ from scrapers.greenhouse_scraper import collect_jobs as collect_greenhouse_jobs
 from scrapers.lever_scraper import collect_jobs as collect_lever_jobs
 from scrapers.nextjs_scraper import collect_jobs as collect_nextjs_jobs
 from scrapers.scrape_diagnostics import ScrapeDiagnostics
-from shared.digest import build_digest_bodies
+from shared.digest import build_digest_payloads
 from sponsorship import enrich_jobs, load_sponsor_company_lookup
 from storage import create_storage
 
@@ -79,13 +79,18 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
 
 
 def send_digest(recipient_profile, jobs):
-    bodies = build_digest_bodies(jobs, recipient_profile)
+    payloads = build_digest_payloads(jobs, recipient_profile)
 
-    for index, body in enumerate(bodies, start=1):
+    for index, payload in enumerate(payloads, start=1):
         subject = f"Job digest: {len(jobs)} new job matches"
-        if len(bodies) > 1:
-            subject += f" ({index}/{len(bodies)})"
-        send_email(subject, body, recipient_profile["email"])
+        if len(payloads) > 1:
+            subject += f" ({index}/{len(payloads)})"
+        send_email(
+            subject,
+            payload["text"],
+            recipient_profile["email"],
+            html_body=payload["html"],
+        )
 
 
 def initialize_storage(storage):

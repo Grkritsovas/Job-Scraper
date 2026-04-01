@@ -1,6 +1,6 @@
 import unittest
 
-from utils import build_digest_bodies
+from utils import build_digest_bodies, build_digest_html_bodies
 
 
 class DigestFormattingTests(unittest.TestCase):
@@ -152,6 +152,67 @@ class DigestFormattingTests(unittest.TestCase):
             ),
             bodies[0],
         )
+
+    def test_html_digest_renders_button_and_hides_raw_url_text(self):
+        jobs = [
+            {
+                "company": "Example",
+                "title": "Software Engineer",
+                "url": "https://example.com/job",
+                "location": "London",
+                "top_profile": "SWE",
+                "ranking_score": 0.84,
+                "top_score": 0.58,
+                "second_profile": "Data Analyst",
+                "second_score": 0.46,
+                "score_margin": 0.12,
+                "why_apply": "Strong junior engineering fit.",
+                "is_sponsor_licensed_employer": False,
+                "sponsorship_status": "unknown",
+                "sponsor_company_metadata": {},
+            }
+        ]
+        recipient_profile = {
+            "care_about_sponsorship": False,
+            "use_sponsor_lookup": False,
+        }
+
+        bodies = build_digest_html_bodies(jobs, recipient_profile)
+
+        self.assertEqual(1, len(bodies))
+        self.assertIn(">Open Role</a>", bodies[0])
+        self.assertIn('href="https://example.com/job"', bodies[0])
+        self.assertNotIn(">https://example.com/job<", bodies[0])
+        self.assertIn("New roles worth a look", bodies[0])
+        self.assertIn("Strong junior engineering fit.", bodies[0])
+
+    def test_html_digest_includes_sponsorship_summary_when_enabled(self):
+        jobs = [
+            {
+                "company": "Palantir",
+                "title": "Software Engineer",
+                "url": "https://example.com/job",
+                "location": "London",
+                "top_profile": "SWE",
+                "ranking_score": 0.54,
+                "top_score": 0.54,
+                "second_profile": "AI/ML",
+                "second_score": 0.30,
+                "score_margin": 0.10,
+                "is_sponsor_licensed_employer": True,
+                "sponsorship_status": "explicit_no",
+                "sponsor_company_metadata": {},
+            }
+        ]
+        recipient_profile = {
+            "care_about_sponsorship": True,
+            "use_sponsor_lookup": True,
+        }
+
+        bodies = build_digest_html_bodies(jobs, recipient_profile)
+
+        self.assertIn("Palantir [Sponsor-licensed]", bodies[0])
+        self.assertIn("Sponsorship: explicit no", bodies[0])
 
 
 if __name__ == "__main__":

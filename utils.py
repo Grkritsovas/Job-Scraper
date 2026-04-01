@@ -11,7 +11,12 @@ from shared.descriptions import (
     fetch_job_description_details,
     get_visible_text,
 )
-from shared.digest import build_digest_bodies, format_company_heading
+from shared.digest import (
+    build_digest_bodies,
+    build_digest_html_bodies,
+    build_digest_payloads,
+    format_company_heading,
+)
 from shared.locations import (
     UK_LOCATION_TERMS,
     dedupe_keep_order,

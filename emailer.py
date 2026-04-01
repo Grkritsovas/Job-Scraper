@@ -1,5 +1,6 @@
 import os
 import smtplib
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 
@@ -17,17 +18,24 @@ def get_email_config():
     return email, app_password
 
 
-def send_email(subject, body, recipient_email=None):
+def send_email(subject, body, recipient_email=None, html_body=None):
     if os.getenv("JOB_SCRAPER_DRY_RUN") == "1":
         print(f"[DRY RUN] {subject}")
         print(f"To: {recipient_email or '(default sender address)'}")
         print(body)
+        if html_body:
+            print("[DRY RUN HTML BODY AVAILABLE]")
         return
 
     email, app_password = get_email_config()
     recipient_email = recipient_email or email
 
-    message = MIMEText(body)
+    if html_body:
+        message = MIMEMultipart("alternative")
+        message.attach(MIMEText(body, "plain", "utf-8"))
+        message.attach(MIMEText(html_body, "html", "utf-8"))
+    else:
+        message = MIMEText(body, "plain", "utf-8")
     message["Subject"] = subject
     message["From"] = email
     message["To"] = recipient_email
