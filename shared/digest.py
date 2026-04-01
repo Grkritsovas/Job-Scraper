@@ -146,6 +146,7 @@ def _score_theme(job):
     score = _job_primary_score(job)
     if score >= 0.8:
         return {
+            "label": "Strong Match",
             "solid": "#0f766e",
             "gradient": "linear-gradient(135deg, #0f766e 0%, #14b8a6 100%)",
             "badge_bg": "#ccfbf1",
@@ -154,6 +155,7 @@ def _score_theme(job):
         }
     if score >= 0.65:
         return {
+            "label": "Good Match",
             "solid": "#1d4ed8",
             "gradient": "linear-gradient(135deg, #1d4ed8 0%, #38bdf8 100%)",
             "badge_bg": "#dbeafe",
@@ -162,6 +164,7 @@ def _score_theme(job):
         }
     if score >= 0.5:
         return {
+            "label": "Borderline",
             "solid": "#7c3aed",
             "gradient": "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
             "badge_bg": "#ede9fe",
@@ -169,6 +172,7 @@ def _score_theme(job):
             "border": "#ddd6fe",
         }
     return {
+        "label": "Borderline",
         "solid": "#475569",
         "gradient": "linear-gradient(135deg, #475569 0%, #94a3b8 100%)",
         "badge_bg": "#e2e8f0",
@@ -190,7 +194,6 @@ def _render_job_card_html(job, recipient_profile):
         else ""
     )
     theme = _score_theme(job)
-    score_badge = f"{_score_to_percent(_job_primary_score(job))}% match"
 
     meta_bits = []
     if location:
@@ -243,7 +246,7 @@ def _render_job_card_html(job, recipient_profile):
         "<td style=\"vertical-align:top;text-align:right;white-space:nowrap;\">"
         f"<div style=\"display:inline-block;padding:8px 12px;border-radius:999px;"
         f"background:{theme['badge_bg']};color:{theme['badge_text']};font-size:12px;"
-        f"font-weight:700;letter-spacing:0.02em;\">{escape(score_badge)}</div>"
+        f"font-weight:700;letter-spacing:0.02em;\">{escape(theme['label'])}</div>"
         "</td>"
         "</tr>"
         "</table>"

@@ -185,6 +185,7 @@ class DigestFormattingTests(unittest.TestCase):
         self.assertNotIn(">https://example.com/job<", bodies[0])
         self.assertIn("New roles worth a look", bodies[0])
         self.assertIn("Strong junior engineering fit.", bodies[0])
+        self.assertIn("Strong Match", bodies[0])
 
     def test_html_digest_includes_sponsorship_summary_when_enabled(self):
         jobs = [
