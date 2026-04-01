@@ -2,7 +2,10 @@
 ### For Entry-Level and Junior Roles in Tech
 
 Scrapes public job boards, ranks roles against configurable recipient profiles, and sends grouped email digests.
-![Description](examples/example_digest.png)
+<p align="center">
+  <img src="examples/example_digest.png" alt="Description" width="600">
+</p>
+
 
 ## Intended Usage
 
