@@ -24,6 +24,9 @@ Typical setup:
 - optionally reranks top semantic matches with Gemini for stricter final selection
 - skips jobs already reviewed for that recipient
 - sends grouped email digests
+<p align="center">
+  <img src="examples/job_scraper_workflow.gif" alt="Job scraper workflow animation" width="512">
+</p>
 
 ## Matching Modes
 
