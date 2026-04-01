@@ -13,10 +13,26 @@ Primary intended usage:
 - loads target companies and boards from config files or GitHub Actions variables
 - scrapes jobs from configured public job boards
 - ranks jobs separately for each recipient profile with semantic matching (choose a sentence-transformer from [matching/models](matching/models/))
+- optionally reranks the top semantic matches with Gemini for stricter final selection
 - skips jobs already sent to that recipient
 - emails a digest of new matches
 
 Use [examples/README.md](examples/README.md) if you want to inspect the config shapes and starter target files in more detail.
+
+## Matching Flow
+
+There are two matching modes:
+
+- semantic-only mode
+  Used when `GEMINI_API_KEY` is not set. The app uses embedding ranking only and sends a capped digest.
+- semantic + Gemini rerank mode
+  Used when `GEMINI_API_KEY` is set. The app uses semantic ranking for retrieval, then Gemini reranks the top unseen jobs using recipient profiles and optional `cv_summary`.
+
+Important Gemini behavior:
+
+- reviewed jobs are stored as seen, even if Gemini rejects them or leaves them out of the final email
+- if Gemini is enabled but unavailable, the app does not fall back to the semantic shortlist for that run
+- `cv_summary` and `care_about_hard_eligibility` affect the Gemini reranker only
 
 ## GitHub Actions Setup
 
@@ -31,12 +47,18 @@ This is the recommended way to use the project.
 
 ### Optional GitHub Config
 
+- `GEMINI_API_KEY`
 - `SPONSOR_COMPANIES_CSV_TEXT`
 - `SPONSOR_COMPANIES_CSV`
 - `ASHBY_COMPANIES_JSON`
 - `GREENHOUSE_BOARD_TOKENS_JSON`
 - `LEVER_COMPANIES_JSON`
 - `NEXTJS_URLS_JSON`
+- `JOB_SCRAPER_LLM_MODEL`
+- `JOB_SCRAPER_LLM_TOP_N`
+- `JOB_SCRAPER_LLM_BATCH_SIZE`
+- `JOB_SCRAPER_LLM_DESCRIPTION_CHARS`
+- `JOB_SCRAPER_MAX_SEMANTIC_EMAIL_JOBS`
 
 ### Setup Steps
 
@@ -49,6 +71,23 @@ This is the recommended way to use the project.
 7. Run the workflow manually once, then enable the schedule if you want recurring digests.
 
 If you leave the target variables unset, the workflow uses the bundled starter files in [examples/](examples/).
+
+### Optional Gemini Reranker
+
+If you add `GEMINI_API_KEY`, the workflow switches to semantic retrieval plus Gemini reranking.
+
+Recommended starting variables:
+
+- `JOB_SCRAPER_LLM_MODEL = gemini-2.5-flash`
+- `JOB_SCRAPER_LLM_TOP_N = 20` to `40`
+- `JOB_SCRAPER_LLM_BATCH_SIZE = 10`
+- `JOB_SCRAPER_LLM_DESCRIPTION_CHARS = 1600`
+
+Cost note:
+
+- the first Gemini-enabled run can cost more because many jobs may be unseen and reviewed at once
+- later runs are usually cheaper because reviewed jobs are stored as seen
+- if you want no LLM cost at all, leave `GEMINI_API_KEY` unset and the app stays in semantic-only mode
 
 ## Config Overview
 
@@ -63,6 +102,15 @@ Minimum useful fields:
 - `email`
 
 Everything else is tuning. See [examples/README.md](examples/README.md) for the optional fields.
+
+Useful Gemini-related recipient fields:
+
+- `cv_summary`
+  Short supporting context for the reranker. This should be a compact summary, not a full CV dump.
+- `care_about_hard_eligibility`
+  Adds stricter Gemini instructions around SC/DV clearance, nationality restrictions, and explicit UK residency requirements.
+- `care_about_sponsorship`
+  Controls sponsorship-related digest output. This is separate from `care_about_hard_eligibility`.
 
 ### Targets
 
@@ -99,7 +147,7 @@ If enabled for a recipient profile:
 
 ## Local Run (Optional)
 
-Local runs are mainly for testing, debugging, or tuning config before pushing changes.
+Local runs are mainly for testing, debugging, or tuning config before pushing changes. The intended production setup is the scheduled GitHub Actions workflow with persistent seen-job storage.
 
 1. Create and activate a virtual environment.
 2. Install dependencies with `pip install -r requirements.txt`.

@@ -30,6 +30,7 @@ Common ranking and formatting fields:
 - `semantic_profile_texts`
 - `min_top_score`
 - `negative_profile_texts`
+- `cv_summary`
 - `seniority_penalty_weight`
 - `preferred_salary_max_gbp`
 - `salary_hard_cap_gbp`
@@ -42,6 +43,7 @@ Practical notes:
 - The hard filters are intentionally junior-oriented.
 - `semantic_profile_texts` is where the best personalization happens.
 - If you use a custom semantic profile id and omit custom text, the app can fall back to generated profile text, but explicit text usually ranks better.
+- `cv_summary` and `care_about_hard_eligibility` only affect the optional Gemini reranker.
 
 ## Target File Notes
 
