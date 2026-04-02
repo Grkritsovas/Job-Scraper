@@ -186,6 +186,8 @@ class DigestFormattingTests(unittest.TestCase):
         self.assertIn("New roles worth a look", bodies[0])
         self.assertIn("Strong junior engineering fit.", bodies[0])
         self.assertIn("Strong Match", bodies[0])
+        self.assertIn("max-width:920px", bodies[0])
+        self.assertIn("padding:12px 6px", bodies[0])
 
     def test_html_digest_includes_sponsorship_summary_when_enabled(self):
         jobs = [
