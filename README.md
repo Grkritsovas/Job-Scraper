@@ -54,6 +54,8 @@ The full step-by-step setup, variable reference, recipient profile controls, and
 
 Starter config files and example shapes are in [examples/README.md](examples/README.md).
 
+Internal architecture notes, contributor workflows, and agent guardrails are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Local Run
 
 Local runs are mainly for testing, debugging, or tuning config before pushing changes.
