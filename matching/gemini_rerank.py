@@ -15,8 +15,6 @@ DEFAULT_EVIDENCE_ITEMS = 2
 DEFAULT_MAX_SEMANTIC_EMAIL_JOBS = 60
 DEFAULT_GEMINI_RETRY_ATTEMPTS = 3
 DEFAULT_GEMINI_RETRY_BASE_SECONDS = 2.0
-DEFAULT_GEMINI_FAILURE_MODE = "fail_closed"
-DEFAULT_GEMINI_FAILURE_SEMANTIC_TOP_N = 10
 RETRYABLE_GEMINI_STATUS_CODES = {429, 500, 502, 503, 504}
 RETRYABLE_GEMINI_ERROR_MARKERS = (
     "deadline exceeded",
@@ -125,16 +123,6 @@ def _build_result(
         "gemini_reviewed_jobs": gemini_reviewed_jobs,
         "review_error": review_error,
     }
-
-
-def _get_gemini_failure_mode():
-    normalized_mode = os.getenv(
-        "JOB_SCRAPER_LLM_FAILURE_MODE",
-        DEFAULT_GEMINI_FAILURE_MODE,
-    ).strip().lower()
-    if normalized_mode in {"fail_closed", "semantic_fallback"}:
-        return normalized_mode
-    return DEFAULT_GEMINI_FAILURE_MODE
 
 
 def _chunked(values, size):
@@ -595,35 +583,6 @@ def _strip_internal_fields(jobs):
     ]
 
 
-def _build_gemini_failure_result(candidate_jobs, error_message):
-    if _get_gemini_failure_mode() != "semantic_fallback":
-        return _build_result(
-            [],
-            [],
-            "gemini_failed",
-            llm_shortlisted_jobs=0,
-            gemini_reviewed_jobs=0,
-            review_error=error_message,
-        )
-
-    fallback_top_n = max(
-        1,
-        _safe_int_env(
-            "JOB_SCRAPER_LLM_FALLBACK_TOP_N",
-            DEFAULT_GEMINI_FAILURE_SEMANTIC_TOP_N,
-        ),
-    )
-    fallback_jobs = candidate_jobs[:fallback_top_n]
-    return _build_result(
-        fallback_jobs,
-        [],
-        "semantic_fallback",
-        llm_shortlisted_jobs=None,
-        gemini_reviewed_jobs=0,
-        review_error=error_message,
-    )
-
-
 def rerank_jobs_with_gemini(
     jobs,
     recipient_profile,
@@ -682,12 +641,23 @@ def rerank_jobs_with_gemini(
     except RuntimeError as exc:
         error_message = str(exc)
         print(f"Warning: Gemini reranking unavailable, not sending digest. {error_message}")
-        return _build_gemini_failure_result(candidate_jobs, error_message)
+        return _build_result(
+            [],
+            [],
+            "gemini_failed",
+            llm_shortlisted_jobs=0,
+            gemini_reviewed_jobs=0,
+            review_error=error_message,
+        )
 
     if client is None:
-        return _build_gemini_failure_result(
-            candidate_jobs,
-            "Gemini API key is missing.",
+        return _build_result(
+            [],
+            [],
+            "gemini_failed",
+            llm_shortlisted_jobs=0,
+            gemini_reviewed_jobs=0,
+            review_error="Gemini API key is missing.",
         )
 
     try:
@@ -705,7 +675,14 @@ def rerank_jobs_with_gemini(
             "Warning: Gemini batch screening failed, not sending digest. "
             f"{error_message}"
         )
-        return _build_gemini_failure_result(candidate_jobs, error_message)
+        return _build_result(
+            [],
+            [],
+            "gemini_failed",
+            llm_shortlisted_jobs=0,
+            gemini_reviewed_jobs=0,
+            review_error=error_message,
+        )
 
     if not screened_candidates:
         return _build_result(
@@ -729,7 +706,14 @@ def rerank_jobs_with_gemini(
             "Warning: Gemini final reranking failed, not sending digest. "
             f"{error_message}"
         )
-        return _build_gemini_failure_result(candidate_jobs, error_message)
+        return _build_result(
+            [],
+            [],
+            "gemini_failed",
+            llm_shortlisted_jobs=0,
+            gemini_reviewed_jobs=0,
+            review_error=error_message,
+        )
 
     return _build_result(
         _strip_internal_fields(final_shortlist),

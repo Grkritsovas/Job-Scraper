@@ -405,58 +405,6 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertEqual("https://example.com/job-1", result["jobs_to_send"][0]["url"])
         self.assertEqual("https://example.com/job-60", result["jobs_to_send"][-1]["url"])
 
-    def test_rerank_can_fall_back_to_small_semantic_shortlist_without_marking_seen(self):
-        jobs = [make_job(index) for index in range(1, 15)]
-        recipient_profile = {
-            "semantic_profiles": ["swe"],
-            "semantic_profile_texts": {},
-            "negative_profile_texts": [],
-            "cv_summary": "",
-        }
-
-        class AlwaysFailingBatchModels(FakeModels):
-            def generate_content(self, model, contents, config):
-                self.calls.append(
-                    {
-                        "model": model,
-                        "contents": contents,
-                        "config": config,
-                    }
-                )
-                raise RuntimeError("503 UNAVAILABLE")
-
-        class AlwaysFailingBatchClient:
-            def __init__(self):
-                self.models = AlwaysFailingBatchModels([])
-
-        with patch.dict(
-            os.environ,
-            {
-                "GEMINI_API_KEY": "test-key",
-                "JOB_SCRAPER_LLM_RETRY_ATTEMPTS": "2",
-                "JOB_SCRAPER_LLM_RETRY_BASE_SECONDS": "0",
-                "JOB_SCRAPER_LLM_FAILURE_MODE": "semantic_fallback",
-                "JOB_SCRAPER_LLM_FALLBACK_TOP_N": "10",
-            },
-            clear=True,
-        ):
-            result = rerank_jobs_with_gemini(
-                jobs,
-                recipient_profile,
-                client=AlwaysFailingBatchClient(),
-                top_n=14,
-                batch_size=10,
-            )
-
-        self.assertEqual("semantic_fallback", result["review_mode"])
-        self.assertEqual([], result["reviewed_jobs"])
-        self.assertEqual(0, result["gemini_reviewed_jobs"])
-        self.assertIsNone(result["llm_shortlisted_jobs"])
-        self.assertEqual(10, len(result["jobs_to_send"]))
-        self.assertEqual("https://example.com/job-1", result["jobs_to_send"][0]["url"])
-        self.assertEqual("https://example.com/job-10", result["jobs_to_send"][-1]["url"])
-        self.assertIn("503 UNAVAILABLE", result["review_error"])
-
     def test_rerank_honors_semantic_cap_env_var_when_disabled(self):
         jobs = [make_job(index) for index in range(1, 20)]
         recipient_profile = {
