@@ -225,6 +225,168 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertEqual(0, result["gemini_reviewed_jobs"])
         self.assertIn("final pass failed", result["review_error"])
 
+    def test_rerank_retries_retryable_batch_failure_and_recovers(self):
+        jobs = [make_job(1)]
+        recipient_profile = {
+            "semantic_profiles": ["swe"],
+            "semantic_profile_texts": {},
+            "negative_profile_texts": [],
+            "cv_summary": "",
+        }
+
+        class RetryableBatchModels(FakeModels):
+            def generate_content(self, model, contents, config):
+                self.calls.append(
+                    {
+                        "model": model,
+                        "contents": contents,
+                        "config": config,
+                    }
+                )
+                if len(self.calls) == 1:
+                    raise RuntimeError("503 UNAVAILABLE")
+                if len(self.calls) == 2:
+                    return FakeResponse(
+                        {
+                            "candidates": [
+                                {
+                                    "job_url": "https://example.com/job-1",
+                                    "matched_profile": "SWE",
+                                    "fit_score": 80,
+                                    "why_apply": "Good junior engineering fit.",
+                                    "supporting_evidence": ["Software Engineer 1"],
+                                    "mismatch_evidence": [],
+                                }
+                            ]
+                        }
+                    )
+                return FakeResponse(
+                    {
+                        "shortlisted_jobs": [
+                            {
+                                "job_url": "https://example.com/job-1",
+                                "fit_score": 84,
+                                "why_apply": "Strong junior engineering fit.",
+                            }
+                        ]
+                    }
+                )
+
+        class RetryableBatchClient:
+            def __init__(self):
+                self.models = RetryableBatchModels([])
+
+        retryable_batch_client = RetryableBatchClient()
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "GEMINI_API_KEY": "test-key",
+                    "JOB_SCRAPER_LLM_RETRY_ATTEMPTS": "3",
+                    "JOB_SCRAPER_LLM_RETRY_BASE_SECONDS": "0",
+                },
+                clear=True,
+            ),
+            patch("matching.gemini_rerank.time.sleep") as sleep_mock,
+        ):
+            result = rerank_jobs_with_gemini(
+                jobs,
+                recipient_profile,
+                client=retryable_batch_client,
+                top_n=1,
+                batch_size=10,
+            )
+
+        self.assertEqual("gemini", result["review_mode"])
+        self.assertEqual(1, len(result["jobs_to_send"]))
+        self.assertEqual(1, len(result["reviewed_jobs"]))
+        self.assertEqual(1, result["llm_shortlisted_jobs"])
+        self.assertEqual(1, result["gemini_reviewed_jobs"])
+        self.assertEqual(3, len(retryable_batch_client.models.calls))
+        self.assertEqual(0, sleep_mock.call_count)
+
+    def test_rerank_retries_retryable_final_pass_failure_and_recovers(self):
+        jobs = [make_job(1)]
+        recipient_profile = {
+            "semantic_profiles": ["swe"],
+            "semantic_profile_texts": {},
+            "negative_profile_texts": [],
+            "cv_summary": "",
+        }
+
+        class RetryableFinalModels(FakeModels):
+            def generate_content(self, model, contents, config):
+                self.calls.append(
+                    {
+                        "model": model,
+                        "contents": contents,
+                        "config": config,
+                    }
+                )
+                if len(self.calls) == 1:
+                    return FakeResponse(
+                        {
+                            "candidates": [
+                                {
+                                    "job_url": "https://example.com/job-1",
+                                    "matched_profile": "SWE",
+                                    "fit_score": 82,
+                                    "why_apply": "Good junior engineering fit.",
+                                    "supporting_evidence": ["Software Engineer 1"],
+                                    "mismatch_evidence": [],
+                                }
+                            ]
+                        }
+                    )
+                if len(self.calls) == 2:
+                    raise RuntimeError("503 UNAVAILABLE")
+                return FakeResponse(
+                    {
+                        "shortlisted_jobs": [
+                            {
+                                "job_url": "https://example.com/job-1",
+                                "fit_score": 86,
+                                "why_apply": "Strong junior engineering fit.",
+                            }
+                        ]
+                    }
+                )
+
+        class RetryableFinalClient:
+            def __init__(self):
+                self.models = RetryableFinalModels([])
+
+        retryable_final_client = RetryableFinalClient()
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "GEMINI_API_KEY": "test-key",
+                    "JOB_SCRAPER_LLM_RETRY_ATTEMPTS": "3",
+                    "JOB_SCRAPER_LLM_RETRY_BASE_SECONDS": "0",
+                },
+                clear=True,
+            ),
+            patch("matching.gemini_rerank.time.sleep") as sleep_mock,
+        ):
+            result = rerank_jobs_with_gemini(
+                jobs,
+                recipient_profile,
+                client=retryable_final_client,
+                top_n=1,
+                batch_size=10,
+            )
+
+        self.assertEqual("gemini", result["review_mode"])
+        self.assertEqual(1, len(result["jobs_to_send"]))
+        self.assertEqual(1, len(result["reviewed_jobs"]))
+        self.assertEqual(1, result["llm_shortlisted_jobs"])
+        self.assertEqual(1, result["gemini_reviewed_jobs"])
+        self.assertEqual(3, len(retryable_final_client.models.calls))
+        self.assertEqual(0, sleep_mock.call_count)
+
     def test_rerank_returns_capped_semantic_jobs_when_disabled(self):
         jobs = [make_job(index) for index in range(1, 80)]
         recipient_profile = {

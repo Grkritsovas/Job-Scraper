@@ -1,5 +1,7 @@
 import json
 import os
+import re
+import time
 
 from matching.profile_library import build_profile_specs
 from shared.descriptions import normalize_text_whitespace, strip_matching_boilerplate
@@ -11,6 +13,20 @@ DEFAULT_BATCH_SIZE = 10
 DEFAULT_DESCRIPTION_CHARS = 1600
 DEFAULT_EVIDENCE_ITEMS = 2
 DEFAULT_MAX_SEMANTIC_EMAIL_JOBS = 60
+DEFAULT_GEMINI_RETRY_ATTEMPTS = 3
+DEFAULT_GEMINI_RETRY_BASE_SECONDS = 2.0
+RETRYABLE_GEMINI_STATUS_CODES = {429, 500, 502, 503, 504}
+RETRYABLE_GEMINI_ERROR_MARKERS = (
+    "deadline exceeded",
+    "internal error",
+    "rate limit",
+    "resource exhausted",
+    "service unavailable",
+    "temporarily unavailable",
+    "timed out",
+    "timeout",
+    "unavailable",
+)
 PASS_ONE_JSON_SCHEMA = {
     "type": "object",
     "properties": {
@@ -76,6 +92,17 @@ def _safe_int_env(name, default):
 
     try:
         return int(raw_value)
+    except ValueError:
+        return default
+
+
+def _safe_float_env(name, default):
+    raw_value = os.getenv(name, "").strip()
+    if not raw_value:
+        return default
+
+    try:
+        return float(raw_value)
     except ValueError:
         return default
 
@@ -329,16 +356,81 @@ def _build_client(api_key=None):
     return genai.Client(api_key=effective_api_key)
 
 
+def _extract_error_status_codes(error):
+    candidates = [
+        getattr(error, "status_code", None),
+        getattr(error, "code", None),
+        getattr(error, "status", None),
+    ]
+    response = getattr(error, "response", None)
+    if response is not None:
+        candidates.append(getattr(response, "status_code", None))
+
+    codes = set()
+    for candidate in candidates:
+        if isinstance(candidate, int):
+            codes.add(candidate)
+            continue
+        if isinstance(candidate, str) and candidate.isdigit():
+            codes.add(int(candidate))
+
+    for match in re.finditer(r"\b(429|500|502|503|504)\b", str(error)):
+        codes.add(int(match.group(1)))
+
+    return codes
+
+
+def _is_retryable_gemini_error(error):
+    if _extract_error_status_codes(error) & RETRYABLE_GEMINI_STATUS_CODES:
+        return True
+
+    normalized_message = normalize_text_whitespace(str(error)).lower()
+    return any(marker in normalized_message for marker in RETRYABLE_GEMINI_ERROR_MARKERS)
+
+
 def _generate_json_response(client, model, prompt, schema):
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt,
-        config={
-            "response_mime_type": "application/json",
-            "response_json_schema": schema,
-        },
+    retry_attempts = max(
+        1,
+        _safe_int_env(
+            "JOB_SCRAPER_LLM_RETRY_ATTEMPTS",
+            DEFAULT_GEMINI_RETRY_ATTEMPTS,
+        ),
     )
-    return json.loads(getattr(response, "text", "") or "{}")
+    retry_base_seconds = max(
+        0.0,
+        _safe_float_env(
+            "JOB_SCRAPER_LLM_RETRY_BASE_SECONDS",
+            DEFAULT_GEMINI_RETRY_BASE_SECONDS,
+        ),
+    )
+
+    for attempt_index in range(retry_attempts):
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_json_schema": schema,
+                },
+            )
+            return json.loads(getattr(response, "text", "") or "{}")
+        except Exception as exc:
+            is_last_attempt = attempt_index == retry_attempts - 1
+            if is_last_attempt or not _is_retryable_gemini_error(exc):
+                raise
+
+            retry_number = attempt_index + 1
+            retry_delay = retry_base_seconds * (2**attempt_index)
+            print(
+                "Warning: Gemini API call failed with a retryable error. "
+                f"Retrying {retry_number}/{retry_attempts - 1} in {retry_delay:.1f}s. "
+                f"{exc}"
+            )
+            if retry_delay > 0:
+                time.sleep(retry_delay)
+
+    raise RuntimeError("Gemini API retry loop exited unexpectedly.")
 
 
 def _normalize_string_list(values):
