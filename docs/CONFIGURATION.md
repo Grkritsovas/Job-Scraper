@@ -67,6 +67,20 @@ There are five main places to configure the app:
 - `JOB_SCRAPER_LLM_DESCRIPTION_CHARS`
   Description excerpt length sent to Gemini.
   Recommended start: `1600`
+- `JOB_SCRAPER_LLM_RETRY_ATTEMPTS`
+  Total Gemini call attempts for retryable errors such as `429` and `503`.
+  Default: `3`
+- `JOB_SCRAPER_LLM_RETRY_BASE_SECONDS`
+  Base backoff in seconds between Gemini retries.
+  Default: `2.0`
+- `JOB_SCRAPER_LLM_FAILURE_MODE`
+  What to do if Gemini is enabled but still fails after retries.
+  Allowed values: `fail_closed`, `semantic_fallback`
+  Default: `fail_closed`
+- `JOB_SCRAPER_LLM_FALLBACK_TOP_N`
+  How many semantic jobs to send when `JOB_SCRAPER_LLM_FAILURE_MODE=semantic_fallback`.
+  Fallback jobs are not marked as seen.
+  Default: `10`
 - `JOB_SCRAPER_MAX_SEMANTIC_EMAIL_JOBS`
   Digest cap when Gemini is not enabled.
   Default: `60`
@@ -107,7 +121,9 @@ Behavior:
 - the top unseen jobs go through Gemini
 - only the final Gemini shortlist is emailed
 - all Gemini-reviewed jobs are stored as seen
-- if Gemini fails, the app does not fall back to the semantic shortlist for that run
+- if Gemini fails, the default behavior is to send nothing for that run
+- optional `JOB_SCRAPER_LLM_FAILURE_MODE=semantic_fallback` sends a small semantic fallback instead
+- semantic fallback jobs are not marked as seen
 
 Cost note:
 - the first Gemini-enabled run can cost more because many jobs may be unseen at once
