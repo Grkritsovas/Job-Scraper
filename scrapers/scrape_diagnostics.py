@@ -70,6 +70,7 @@ class ScrapeDiagnostics:
         print(
             f"[ranking:{recipient_id}] "
             f"input={payload.get('input_jobs', 0)} "
+            f"seen_skipped={payload.get('seen_skipped_jobs', 0)} "
             f"hard_filtered={payload.get('hard_filtered_jobs', 0)} "
             f"below_threshold={payload.get('below_threshold_jobs', 0)} "
             f"ranked={payload.get('ranked_jobs', 0)} "

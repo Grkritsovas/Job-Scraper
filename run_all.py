@@ -55,18 +55,22 @@ def collect_all_jobs(targets, diagnostics):
 
 def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostics):
     seen_urls = storage.load_seen_urls(recipient_profile["id"])
+    unseen_candidates = [
+        job for job in candidates if job.get("url") not in seen_urls
+    ]
     ranked_jobs, ranking_stats = rank_jobs(
-        candidates,
+        unseen_candidates,
         recipient_profile,
         return_stats=True,
     )
-    unseen_jobs = [job for job in ranked_jobs if job["url"] not in seen_urls]
-    review_result = rerank_jobs_with_gemini(unseen_jobs, recipient_profile)
+    review_result = rerank_jobs_with_gemini(ranked_jobs, recipient_profile)
     diagnostics.record_recipient_summary(
         recipient_profile["id"],
         {
             **ranking_stats,
-            "unseen_jobs": len(unseen_jobs),
+            "input_jobs": len(candidates),
+            "seen_skipped_jobs": len(candidates) - len(unseen_candidates),
+            "unseen_jobs": len(ranked_jobs),
             "review_mode": review_result["review_mode"],
             "reviewed_jobs": len(review_result["reviewed_jobs"]),
             "llm_shortlisted_jobs": review_result.get("llm_shortlisted_jobs"),
