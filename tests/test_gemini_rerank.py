@@ -55,12 +55,21 @@ class FakeClient:
 
 class GeminiRerankTests(unittest.TestCase):
     def test_rerank_uses_profiles_cv_summary_and_two_pass_shortlist(self):
-        jobs = [make_job(1), make_job(2, title="Graduate Data Analyst")]
+        jobs = [
+            make_job(1),
+            make_job(
+                2,
+                title="Graduate Data Analyst",
+                salary_upper_bound_gbp=100000.0,
+            ),
+        ]
         recipient_profile = {
             "semantic_profiles": ["swe", "data_science"],
             "semantic_profile_texts": {},
             "negative_profile_texts": ["Senior manager role."],
             "cv_summary": "Strong Python, ML, and data project experience.",
+            "preferred_salary_max_gbp": 85000.0,
+            "salary_hard_cap_gbp": 95000.0,
         }
         client = FakeClient(
             [
@@ -128,9 +137,13 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertIn('"label": "SWE"', first_prompt)
         self.assertIn('"label": "Data Science"', first_prompt)
         self.assertIn('"url": "https://example.com/job-2"', first_prompt)
+        self.assertIn('"preferred_salary_max_gbp": 85000.0', first_prompt)
+        self.assertIn('"salary_hard_cap_gbp": 95000.0', first_prompt)
+        self.assertIn('"salary_upper_bound_gbp": 100000.0', first_prompt)
         self.assertIn('"matched_profile": "Data Science"', second_prompt)
         self.assertIn('"supporting_evidence": [', second_prompt)
         self.assertIn('"batch_fit_score": 84', second_prompt)
+        self.assertIn('"salary_upper_bound_gbp": 100000.0', second_prompt)
 
     def test_rerank_uses_top_n_and_splits_batches(self):
         jobs = [make_job(index) for index in range(1, 13)]

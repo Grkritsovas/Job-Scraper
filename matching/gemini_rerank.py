@@ -160,7 +160,7 @@ def _fit_hint(job):
 
 
 def _build_job_payload(job, description_chars):
-    return {
+    payload = {
         "url": job.get("url", ""),
         "company": normalize_text_whitespace(job.get("company", "")),
         "title": normalize_text_whitespace(job.get("title", "")),
@@ -171,6 +171,9 @@ def _build_job_payload(job, description_chars):
             description_chars,
         ),
     }
+    if job.get("salary_upper_bound_gbp") is not None:
+        payload["salary_upper_bound_gbp"] = job.get("salary_upper_bound_gbp")
+    return payload
 
 
 def _build_candidate_context(recipient_profile):
@@ -186,11 +189,30 @@ def _build_candidate_context(recipient_profile):
         for text in recipient_profile.get("negative_profile_texts", [])
         if normalize_text_whitespace(text)
     ]
-    return {
+    context = {
         "target_profiles": profiles,
         "cv_summary": normalize_text_whitespace(recipient_profile.get("cv_summary", "")),
         "negative_profile_texts": negative_profile_texts,
     }
+    if recipient_profile.get("preferred_salary_max_gbp") is not None:
+        context["preferred_salary_max_gbp"] = recipient_profile.get(
+            "preferred_salary_max_gbp"
+        )
+    if recipient_profile.get("salary_hard_cap_gbp") is not None:
+        context["salary_hard_cap_gbp"] = recipient_profile.get("salary_hard_cap_gbp")
+    return context
+
+
+def _add_salary_rule(instructions, recipient_profile):
+    preferred_salary_max = recipient_profile.get("preferred_salary_max_gbp")
+    if preferred_salary_max is None:
+        return
+
+    instructions["salary_rule"] = (
+        "If salary context is provided, prefer roles whose compensation does not "
+        "clearly exceed the candidate's target range. Treat roles far above the "
+        "preferred salary as weaker matches, even when the skills overlap."
+    )
 
 
 def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
@@ -259,6 +281,7 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "and explicit continuous UK residency requirements such as 3 years, 5 years, or similar. "
             "Do not keep these roles unless the candidate context directly confirms eligibility."
         )
+    _add_salary_rule(instructions, recipient_profile)
 
     candidate_payload = {
         "instructions": instructions,
@@ -279,6 +302,7 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "company": normalize_text_whitespace(candidate.get("company", "")),
             "title": normalize_text_whitespace(candidate.get("title", "")),
             "location": normalize_text_whitespace(candidate.get("location", "")),
+            "salary_upper_bound_gbp": candidate.get("salary_upper_bound_gbp"),
             "matched_profile": candidate.get("llm_matched_profile", ""),
             "batch_fit_score": candidate.get("llm_fit_score", 0),
             "semantic_fit_hint": _fit_hint(candidate),
@@ -327,6 +351,7 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "and explicit continuous UK residency requirements such as 3 years, 5 years, or similar. "
             "Do not keep these roles unless the candidate context directly confirms eligibility."
         )
+    _add_salary_rule(instructions, recipient_profile)
 
     payload = {
         "instructions": instructions,
