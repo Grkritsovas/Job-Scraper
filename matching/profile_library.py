@@ -82,22 +82,6 @@ PROFILE_ID_ALIASES = {
     "swe": "swe",
 }
 
-DEFAULT_NEGATIVE_PROFILE_TEXTS = [
-    (
-        "Role aimed at established engineers with proven commercial experience "
-        "building, deploying, operating, and owning production systems. Expects "
-        "service reliability ownership, on-call exposure, system design depth, "
-        "cross-team technical leadership, and multiple years of professional "
-        "software or machine learning engineering work."
-    ),
-    (
-        "Senior or staff-level engineering role requiring technical leadership, "
-        "mentoring, architecture ownership, production responsibility, and proven "
-        "delivery of complex systems at scale across multiple teams."
-    ),
-]
-
-
 def normalize_profile_id(value):
     normalized = re.sub(r"[^a-z0-9]+", "_", (value or "").lower()).strip("_")
     return PROFILE_ID_ALIASES.get(normalized, normalized)

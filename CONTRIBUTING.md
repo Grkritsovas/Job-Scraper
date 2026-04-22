@@ -59,11 +59,10 @@ The intended steady-state runtime is a scheduled GitHub Actions workflow backed 
   - builds matching text from title + cleaned description
   - scores against profile embeddings
   - applies junior-title boosts
-  - applies negative-profile seniority penalties
   - applies optional salary penalties
   - sorts by final `ranking_score`
 - Added ranking fields include:
-  `profile_scores`, `top_profile`, `top_score`, `second_profile`, `second_score`, `score_margin`, `fit_summary`, `seniority_penalty_score`, `seniority_penalty_applied`, `ranking_score`, `salary_upper_bound_gbp`, `salary_penalty_applied`.
+  `profile_scores`, `top_profile`, `top_score`, `second_profile`, `second_score`, `score_margin`, `fit_summary`, `ranking_score`, `salary_upper_bound_gbp`, `salary_penalty_applied`.
 
 ### 6. Unseen filtering and optional Gemini review
 

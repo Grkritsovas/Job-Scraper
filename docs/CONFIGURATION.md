@@ -1,178 +1,144 @@
 # Configuration Guide
 
-This document explains where the controls live, how to set them, and what each one affects downstream.
+This project now loads recipient profiles from the database only. Runtime recipient config lives in `app_config.recipient_profiles.config_json`.
 
-## Configuration Surfaces
+## Required Hosted Setup
 
-There are five main places to configure the app:
-
-1. GitHub Actions secrets
-   Sensitive values such as credentials, database URLs, and full recipient JSON.
-2. GitHub Actions variables
-   Non-secret controls such as LLM model choice, top-N limits, and target overrides.
-3. `RECIPIENT_PROFILES_JSON`
-   The main per-recipient control surface. This is where profile behavior should usually live.
-4. Local fallback files
-   Useful for testing locally without GitHub Actions.
-5. Bundled example files in `examples/`
-   UK-focused starter targets and example config shapes.
-
-## Recommended Hosted Setup
-
-1. Fork the repo.
-2. Create a Postgres database.
-3. Add these required GitHub Actions secrets:
-   - `JOB_SCRAPER_EMAIL`
-   - `JOB_SCRAPER_APP_PASSWORD`
-   - `DATABASE_URL`
-   - `RECIPIENT_PROFILES_JSON`
-4. Optionally add `GEMINI_API_KEY` if you want Gemini reranking.
-5. Optionally add non-secret GitHub Actions variables for tuning.
-6. Run the workflow manually once.
-7. Enable the schedule.
-
-## GitHub Secrets
-
-### Required
-
+Required GitHub Actions secrets:
 - `JOB_SCRAPER_EMAIL`
-  Sender address for digest emails.
 - `JOB_SCRAPER_APP_PASSWORD`
-  App password for the sender account.
 - `DATABASE_URL`
-  Postgres connection string for persistent seen-job tracking.
-- `RECIPIENT_PROFILES_JSON`
-  The full recipient configuration array.
 
-### Optional
-
+Optional GitHub Actions secret:
 - `GEMINI_API_KEY`
-  Enables semantic retrieval plus Gemini reranking.
-- `SPONSOR_COMPANIES_CSV_TEXT`
-  Inline sponsor-company CSV content if you do not want a file path.
 
-## GitHub Variables
-
-### Optional Gemini Controls
-
+Optional GitHub Actions variables:
 - `JOB_SCRAPER_LLM_MODEL`
-  Model id for Gemini reranking.
-  Recommended start: `gemini-2.5-flash`
 - `JOB_SCRAPER_LLM_TOP_N`
-  How many unseen semantic matches go to Gemini.
-  Recommended start: `20` to `40`
 - `JOB_SCRAPER_LLM_BATCH_SIZE`
-  Batch size for first-pass Gemini screening.
-  Recommended start: `10`
 - `JOB_SCRAPER_LLM_DESCRIPTION_CHARS`
-  Description excerpt length sent to Gemini.
-  Recommended start: `1600`
 - `JOB_SCRAPER_LLM_RETRY_ATTEMPTS`
-  Total Gemini call attempts for retryable errors such as `429` and `503`.
-  Default: `3`
 - `JOB_SCRAPER_LLM_RETRY_BASE_SECONDS`
-  Base backoff in seconds between Gemini retries.
-  Default: `2.0`
 - `JOB_SCRAPER_MAX_SEMANTIC_EMAIL_JOBS`
-  Digest cap when Gemini is not enabled.
-  Default: `60`
-
-### Optional Target Overrides
-
 - `ASHBY_COMPANIES_JSON`
 - `GREENHOUSE_BOARD_TOKENS_JSON`
 - `LEVER_COMPANIES_JSON`
 - `NEXTJS_URLS_JSON`
-
-If these are not set, the app falls back to:
-1. local files such as `ashby_companies.local.json`
-2. bundled example files in `examples/`
-
-### Optional Sponsorship Inputs
-
 - `SPONSOR_COMPANIES_CSV`
-  File path to a sponsor-company CSV
+- `SPONSOR_COMPANIES_CSV_TEXT`
 
-## Matching Modes
+## Runtime Recipient Profiles
 
-### Semantic-Only Mode
+The scraper reads enabled profiles from:
+- `app_config.recipient_profiles`
 
-Used when `GEMINI_API_KEY` is not set.
-
-Behavior:
-- jobs are ranked with the selected sentence-transformer
-- the digest is capped by `JOB_SCRAPER_MAX_SEMANTIC_EMAIL_JOBS`
-- no Gemini cost
-
-### Semantic + Gemini Rerank Mode
-
-Used when `GEMINI_API_KEY` is set.
-
-Behavior:
-- semantic ranking is used for retrieval
-- the top unseen jobs go through Gemini
-- only the final Gemini shortlist is emailed
-- all Gemini-reviewed jobs are stored as seen
-- if Gemini fails after retries, the app sends nothing for that run
-
-Cost note:
-- the first Gemini-enabled run can cost more because many jobs may be unseen at once
-- later runs are usually cheaper because reviewed jobs are stored as seen
-
-## Recipient Profiles
-
-Primary source:
-- `RECIPIENT_PROFILES_JSON`
-
-Local fallback:
-- `recipient_profiles.local.json`
-
-Example:
-- [examples/recipient_profiles.example.json](../examples/recipient_profiles.example.json)
-
-### Minimum Useful Fields
-
-- `id`
+Schema columns:
+- `recipient_id`
 - `email`
+- `enabled`
+- `config_json`
+- `created_at`
+- `updated_at`
 
-### Common Fields and What They Affect
+Version history lives in:
+- `app_config.recipient_profile_versions`
 
-- `semantic_profiles`
-  Which role families the recipient targets.
-- `semantic_profile_texts`
-  Custom text for each target profile. This is one of the strongest levers for better matching.
-- `min_top_score`
-  Minimum semantic score needed to survive ranking.
-- `negative_profile_texts`
-  Text used to apply a soft penalty to roles that sound too senior, too independent, or otherwise off-target.
-- `cv_summary`
-  Short supporting context for Gemini. Keep it compact and factual.
-- `seniority_penalty_weight`
-  How strongly the negative-profile similarity reduces ranking score.
-- `junior_boost_multiplier`
-  Score multiplier applied when the title contains a configured junior-oriented term.
-- `junior_boost_terms`
-  Terms that trigger the junior title boost.
-- `preferred_salary_max_gbp`
-  Preferred salary ceiling for soft salary penalties.
-- `salary_hard_cap_gbp`
-  Upper salary bound after which the maximum salary penalty applies.
-- `salary_penalty_max`
-  Maximum amount the salary penalty can subtract from ranking score.
-- `care_about_sponsorship`
-  Adds sponsorship-related information to the digest when the job text provides it.
-- `care_about_hard_eligibility`
-  Adds stricter Gemini instructions around SC/DV clearance, nationality restrictions, and explicit UK residency requirements.
-- `use_sponsor_lookup`
-  Adds `[Sponsor-licensed]` markers based on the sponsor-company CSV lookup.
+The app uses a direct Postgres connection through `DATABASE_URL`. It does not read recipient profiles from GitHub secrets or local runtime JSON files.
 
-### Important Distinctions
+## Grouped Recipient Profile Shape
 
-- `care_about_sponsorship` is about sponsorship-related output and interpretation.
-- `care_about_hard_eligibility` is about stricter Gemini judgment for hard eligibility constraints.
-- `cv_summary` and `care_about_hard_eligibility` affect the Gemini reranker only.
+Each `config_json` record should look like this:
 
-## Targets
+```json
+{
+  "id": "george",
+  "enabled": true,
+  "delivery": {
+    "email": "george@example.com"
+  },
+  "candidate": {
+    "summary": "Short factual candidate summary.",
+    "target_roles": [
+      {"id": "swe"},
+      {"id": "data_science", "match_text": "Custom profile text"}
+    ]
+  },
+  "job_preferences": {
+    "target_seniority": {
+      "max_explicit_years": 1,
+      "boost_multiplier": 1.2,
+      "boost_title_terms": ["junior", "grad", "graduate", "entry level", "entry-level"]
+    },
+    "salary": {
+      "preferred_max_gbp": 45000,
+      "hard_cap_gbp": 70000,
+      "penalty_strength": 0.35
+    }
+  },
+  "eligibility": {
+    "needs_sponsorship": false,
+    "check_hard_eligibility": false,
+    "use_sponsor_lookup": false
+  },
+  "matching": {
+    "semantic_threshold": 0.42
+  },
+  "llm_review": {
+    "extra_screening_guidance": [],
+    "extra_final_ranking_guidance": []
+  }
+}
+```
+
+## What Each Field Affects
+
+- `candidate.target_roles`
+  Defines the role families used for semantic matching.
+- `candidate.target_roles[*].match_text`
+  Overrides the built-in semantic profile text for that role.
+- `candidate.summary`
+  Gives Gemini compact candidate context.
+- `job_preferences.target_seniority.max_explicit_years`
+  Controls the regex-based experience filter.
+- `job_preferences.target_seniority.boost_multiplier`
+  Multiplies semantic scores for titles that match the configured boost terms.
+- `job_preferences.target_seniority.boost_title_terms`
+  Terms that trigger the junior-title boost.
+- `job_preferences.salary.preferred_max_gbp`
+  Soft salary preference ceiling.
+- `job_preferences.salary.hard_cap_gbp`
+  Salary value where the maximum salary penalty is reached.
+- `job_preferences.salary.penalty_strength`
+  Maximum salary penalty subtracted from ranking score.
+- `eligibility.needs_sponsorship`
+  Enables sponsorship-aware output and interpretation.
+- `eligibility.check_hard_eligibility`
+  Adds stricter Gemini judgment for SC/DV clearance, nationality restrictions, and explicit UK residency requirements.
+- `eligibility.use_sponsor_lookup`
+  Adds sponsor-license lookup markers based on the sponsor-company CSV.
+- `matching.semantic_threshold`
+  Minimum ranking score required after semantic scoring, title boost, and salary penalty.
+- `llm_review.extra_screening_guidance`
+  Extra natural-language rules injected into Gemini pass one.
+- `llm_review.extra_final_ranking_guidance`
+  Extra natural-language rules injected into Gemini pass two.
+
+## Matching Flow
+
+1. Scrape jobs from the configured sources.
+2. Drop jobs already seen for that recipient.
+3. Apply hard filters:
+   - title seniority/commercial/eligibility terms
+   - location
+   - authorization/eligibility mismatch
+   - explicit experience requirement above `max_explicit_years`
+4. Score remaining jobs against semantic target-role profiles.
+5. Apply the configured junior-title boost when the title matches one of the boost terms.
+6. Apply the optional salary penalty.
+7. Drop jobs below `matching.semantic_threshold`.
+8. If Gemini is enabled, run two-pass Gemini screening and reranking.
+
+## Target Configuration
 
 Supported target config variables:
 - `ASHBY_COMPANIES_JSON`
@@ -185,14 +151,7 @@ Target precedence:
 2. local file such as `ashby_companies.local.json`
 3. bundled example file in `examples/`
 
-Notes:
-- Ashby and Lever targets can be plain slugs or full public URLs.
-- Full URLs are useful for location-filtered boards.
-- The bundled example files are UK-focused starter lists.
-
 ## Sponsorship Lookup
-
-Sponsorship lookup adds metadata only. It is not a live sponsorship check.
 
 Supported inputs:
 - `SPONSOR_COMPANIES_CSV_TEXT`
@@ -202,36 +161,20 @@ Supported inputs:
 
 The CSV only needs a `company_name` column.
 
-If enabled for a recipient:
-- `use_sponsor_lookup` adds a `[Sponsor-licensed]` marker when the company matches the CSV
-- `care_about_sponsorship` adds a `Sponsorship: ...` line when the job text says something useful
+If `use_sponsor_lookup` is enabled for a recipient, the app adds a `[Sponsor-licensed]` marker when the company matches the CSV.
 
-## Local Configuration
+## Loading Profiles Into The Database
 
-Useful local files:
-- `recipient_profiles.local.json`
-- `ashby_companies.local.json`
-- `greenhouse_boards.local.json`
-- `lever_companies.local.json`
-- `nextjs_urls.local.json`
-- `sponsor_companies.local.csv`
+Create or update grouped recipient profiles directly in:
+- `app_config.recipient_profiles`
 
-Local defaults:
-- SQLite database in `job_scraper.db`
-- example target files if local overrides are absent
+Recommended workflow:
+1. Build the grouped JSON shape shown above.
+2. Insert or update each profile in Supabase SQL editor or another Postgres client.
+3. Verify enabled rows with:
 
-## Practical Starting Point
-
-If you want a simple hosted setup:
-
-- set the four required secrets
-- start with the bundled example target lists
-- keep Gemini off for the first sanity check
-- then add `GEMINI_API_KEY`
-- start Gemini with:
-  - `JOB_SCRAPER_LLM_MODEL = gemini-2.5-flash`
-  - `JOB_SCRAPER_LLM_TOP_N = 20`
-  - `JOB_SCRAPER_LLM_BATCH_SIZE = 10`
-  - `JOB_SCRAPER_LLM_DESCRIPTION_CHARS = 1600`
-
-That gives you a conservative baseline before tuning further.
+```sql
+select recipient_id, email, enabled
+from app_config.recipient_profiles
+order by recipient_id;
+```

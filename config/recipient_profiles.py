@@ -1,19 +1,18 @@
 import os
 import re
 
-from config.config_loader import load_json_config
-from matching.profile_library import DEFAULT_SEMANTIC_PROFILES
-
-
-DEFAULT_SENIORITY_PENALTY_WEIGHT = 0.18
-DEFAULT_JUNIOR_BOOST_MULTIPLIER = 1.2
-DEFAULT_JUNIOR_BOOST_TERMS = [
-    "junior",
-    "grad",
-    "graduate",
-    "entry level",
-    "entry-level",
-]
+from matching.hard_filters import DEFAULT_MAX_YEARS_EXPERIENCE
+from matching.profile_library import (
+    DEFAULT_SEMANTIC_PROFILES,
+    display_label,
+    normalize_profile_id,
+)
+from matching.ranking import (
+    DEFAULT_JUNIOR_BOOST_MULTIPLIER,
+    DEFAULT_JUNIOR_BOOST_TERMS,
+    DEFAULT_MIN_PROFILE_SCORE,
+    DEFAULT_SALARY_PENALTY_MAX,
+)
 
 
 def _slugify(value):
@@ -21,105 +20,293 @@ def _slugify(value):
     return normalized or "recipient"
 
 
-def _default_profile():
-    sender_email = os.getenv("JOB_SCRAPER_EMAIL", "").strip()
+def _normalize_text(value):
+    return str(value or "").strip()
+
+
+def _normalize_text_list(values):
+    if not values:
+        return []
+
+    if isinstance(values, str):
+        values = [values]
+
+    normalized = []
+    for value in values:
+        text = _normalize_text(value)
+        if text and text not in normalized:
+            normalized.append(text)
+    return normalized
+
+
+def _to_float(value, default_value):
+    if value is None or value == "":
+        return float(default_value)
+    return float(value)
+
+
+def _to_optional_float(value):
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def _to_optional_int(value):
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def _canonical_target_role(entry):
+    if isinstance(entry, str):
+        profile_id = normalize_profile_id(entry)
+        return {
+            "id": profile_id,
+            "name": display_label(profile_id),
+        }
+
+    if not isinstance(entry, dict):
+        raise RuntimeError(
+            "Each candidate.target_roles entry must be a string or object."
+        )
+
+    raw_id = entry.get("id") or entry.get("profile_id") or entry.get("name")
+    if not _normalize_text(raw_id):
+        raise RuntimeError(
+            "Each candidate.target_roles object must include id, profile_id, or name."
+        )
+
+    profile_id = normalize_profile_id(raw_id)
+    role = {
+        "id": profile_id,
+        "name": _normalize_text(entry.get("name")) or display_label(profile_id),
+    }
+    match_text = _normalize_text(
+        entry.get("match_text") or entry.get("text") or entry.get("profile_text")
+    )
+    if match_text:
+        role["match_text"] = match_text
+    return role
+
+
+def _canonical_target_roles(candidate_config):
+    raw_roles = candidate_config.get("target_roles") or DEFAULT_SEMANTIC_PROFILES
+    roles = []
+    seen_ids = set()
+
+    for raw_role in raw_roles:
+        role = _canonical_target_role(raw_role)
+        if role["id"] in seen_ids:
+            continue
+        seen_ids.add(role["id"])
+        roles.append(role)
+
+    return roles
+
+
+def normalize_grouped_profile(profile, index=0, sender_email=""):
+    if not isinstance(profile, dict):
+        raise RuntimeError("Each recipient profile must be a JSON object.")
+
+    delivery_config = (
+        profile.get("delivery") if isinstance(profile.get("delivery"), dict) else {}
+    )
+    recipient_id = _slugify(
+        profile.get("id")
+        or delivery_config.get("email")
+        or profile.get("email")
+        or f"recipient_{index + 1}"
+    )
+    candidate_config = profile.get("candidate") or {}
+    preferences_config = profile.get("job_preferences") or {}
+    seniority_config = preferences_config.get("target_seniority") or {}
+    salary_config = preferences_config.get("salary") or {}
+    eligibility_config = profile.get("eligibility") or {}
+    matching_config = profile.get("matching") or {}
+    llm_review_config = profile.get("llm_review") or {}
+
+    grouped_profile = {
+        "id": recipient_id,
+        "enabled": bool(profile.get("enabled", True)),
+        "delivery": {
+            "email": _normalize_text(
+                delivery_config.get("email") or profile.get("email")
+            )
+            or _normalize_text(sender_email),
+        },
+        "candidate": {
+            "summary": _normalize_text(candidate_config.get("summary")),
+            "target_roles": _canonical_target_roles(candidate_config),
+        },
+        "job_preferences": {
+            "target_seniority": {
+                "max_explicit_years": _to_optional_int(
+                    seniority_config.get("max_explicit_years")
+                ),
+                "boost_multiplier": _to_float(
+                    seniority_config.get("boost_multiplier"),
+                    DEFAULT_JUNIOR_BOOST_MULTIPLIER,
+                ),
+                "boost_title_terms": _normalize_text_list(
+                    seniority_config.get("boost_title_terms")
+                    or list(DEFAULT_JUNIOR_BOOST_TERMS)
+                ),
+            },
+            "salary": {
+                "preferred_max_gbp": _to_optional_float(
+                    salary_config.get("preferred_max_gbp")
+                ),
+                "hard_cap_gbp": _to_optional_float(salary_config.get("hard_cap_gbp")),
+                "penalty_strength": _to_float(
+                    salary_config.get("penalty_strength"),
+                    DEFAULT_SALARY_PENALTY_MAX,
+                ),
+            },
+        },
+        "eligibility": {
+            "needs_sponsorship": bool(
+                eligibility_config.get("needs_sponsorship", False)
+            ),
+            "check_hard_eligibility": bool(
+                eligibility_config.get("check_hard_eligibility", False)
+            ),
+            "use_sponsor_lookup": bool(
+                eligibility_config.get("use_sponsor_lookup", False)
+            ),
+        },
+        "matching": {
+            "semantic_threshold": _to_float(
+                matching_config.get("semantic_threshold"),
+                DEFAULT_MIN_PROFILE_SCORE,
+            ),
+        },
+        "llm_review": {
+            "extra_screening_guidance": _normalize_text_list(
+                llm_review_config.get("extra_screening_guidance")
+            ),
+            "extra_final_ranking_guidance": _normalize_text_list(
+                llm_review_config.get("extra_final_ranking_guidance")
+            ),
+        },
+    }
+
+    if (
+        grouped_profile["job_preferences"]["target_seniority"]["max_explicit_years"]
+        is None
+    ):
+        grouped_profile["job_preferences"]["target_seniority"][
+            "max_explicit_years"
+        ] = DEFAULT_MAX_YEARS_EXPERIENCE
+
+    if not grouped_profile["delivery"]["email"]:
+        raise RuntimeError(f"Recipient profile '{recipient_id}' is missing delivery.email.")
+
+    return grouped_profile
+
+
+def prepare_recipient_profile_db_rows(grouped_profiles, sender_email=None):
+    if not isinstance(grouped_profiles, list):
+        raise RuntimeError("Recipient profiles config must be a JSON array.")
+
+    grouped = [
+        normalize_grouped_profile(profile, index, sender_email or "")
+        for index, profile in enumerate(grouped_profiles)
+    ]
+    recipient_ids = [profile["id"] for profile in grouped]
+    if len(recipient_ids) != len(set(recipient_ids)):
+        raise RuntimeError("Recipient profile ids must be unique.")
+
     return [
         {
-            "id": "default",
-            "email": sender_email,
-            "semantic_profiles": list(DEFAULT_SEMANTIC_PROFILES),
-            "semantic_profile_texts": {},
-            "min_top_score": float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.42")),
-            "negative_profile_texts": [],
-            "seniority_penalty_weight": DEFAULT_SENIORITY_PENALTY_WEIGHT,
-            "junior_boost_multiplier": DEFAULT_JUNIOR_BOOST_MULTIPLIER,
-            "junior_boost_terms": list(DEFAULT_JUNIOR_BOOST_TERMS),
-            "preferred_salary_max_gbp": None,
-            "salary_hard_cap_gbp": None,
-            "salary_penalty_max": 0.35,
-            "care_about_sponsorship": False,
-            "care_about_hard_eligibility": False,
-            "use_sponsor_lookup": False,
-            "cv_summary": "",
+            "recipient_id": profile["id"],
+            "email": profile["delivery"]["email"],
+            "enabled": bool(profile.get("enabled", True)),
+            "config": profile,
         }
+        for profile in grouped
     ]
 
 
-def _normalize_profile(profile, index):
-    recipient_id = profile.get("id") or profile.get("email") or f"recipient_{index + 1}"
-    email = (profile.get("email") or os.getenv("JOB_SCRAPER_EMAIL", "")).strip()
+def _to_runtime_profile(grouped_profile):
+    target_roles = grouped_profile["candidate"]["target_roles"]
+    semantic_profiles = [role["id"] for role in target_roles]
+    semantic_profile_texts = {
+        role["id"]: role["match_text"]
+        for role in target_roles
+        if _normalize_text(role.get("match_text"))
+    }
+    seniority_config = grouped_profile["job_preferences"]["target_seniority"]
+    salary_config = grouped_profile["job_preferences"]["salary"]
+    eligibility_config = grouped_profile["eligibility"]
+    matching_config = grouped_profile["matching"]
+    llm_review_config = grouped_profile["llm_review"]
 
     return {
-        "id": _slugify(recipient_id),
-        "email": email,
-        "semantic_profiles": list(
-            profile.get("semantic_profiles") or DEFAULT_SEMANTIC_PROFILES
+        "id": grouped_profile["id"],
+        "enabled": bool(grouped_profile.get("enabled", True)),
+        "email": grouped_profile["delivery"]["email"],
+        "semantic_profiles": semantic_profiles,
+        "semantic_profile_texts": semantic_profile_texts,
+        "cv_summary": _normalize_text(grouped_profile["candidate"].get("summary")),
+        "min_top_score": float(matching_config["semantic_threshold"]),
+        "max_years_experience": _to_optional_int(
+            seniority_config.get("max_explicit_years")
         ),
-        "semantic_profile_texts": dict(profile.get("semantic_profile_texts") or {}),
-        "min_top_score": float(
-            profile.get("min_top_score", os.getenv("JOB_SCRAPER_MIN_SCORE", "0.42"))
+        "junior_boost_multiplier": float(seniority_config["boost_multiplier"]),
+        "junior_boost_terms": _normalize_text_list(
+            seniority_config.get("boost_title_terms")
         ),
-        "negative_profile_texts": list(profile.get("negative_profile_texts") or []),
-        "seniority_penalty_weight": float(
-            profile.get(
-                "seniority_penalty_weight",
-                DEFAULT_SENIORITY_PENALTY_WEIGHT,
-            )
+        "preferred_salary_max_gbp": _to_optional_float(
+            salary_config.get("preferred_max_gbp")
         ),
-        "junior_boost_multiplier": float(
-            profile.get(
-                "junior_boost_multiplier",
-                DEFAULT_JUNIOR_BOOST_MULTIPLIER,
-            )
+        "salary_hard_cap_gbp": _to_optional_float(
+            salary_config.get("hard_cap_gbp")
         ),
-        "junior_boost_terms": list(
-            profile.get("junior_boost_terms") or DEFAULT_JUNIOR_BOOST_TERMS
-        ),
-        "preferred_salary_max_gbp": (
-            float(profile["preferred_salary_max_gbp"])
-            if profile.get("preferred_salary_max_gbp") is not None
-            else None
-        ),
-        "salary_hard_cap_gbp": (
-            float(profile["salary_hard_cap_gbp"])
-            if profile.get("salary_hard_cap_gbp") is not None
-            else None
-        ),
-        "salary_penalty_max": float(profile.get("salary_penalty_max", 0.35)),
-        "care_about_sponsorship": bool(profile.get("care_about_sponsorship", False)),
+        "salary_penalty_max": float(salary_config["penalty_strength"]),
+        "care_about_sponsorship": bool(eligibility_config["needs_sponsorship"]),
         "care_about_hard_eligibility": bool(
-            profile.get("care_about_hard_eligibility", False)
+            eligibility_config["check_hard_eligibility"]
         ),
-        "use_sponsor_lookup": bool(profile.get("use_sponsor_lookup", False)),
-        "cv_summary": str(
-            profile.get("cv_summary")
-            or profile.get("cv_text")
-            or profile.get("cv")
-            or ""
-        ).strip(),
+        "use_sponsor_lookup": bool(eligibility_config["use_sponsor_lookup"]),
+        "extra_screening_guidance": _normalize_text_list(
+            llm_review_config.get("extra_screening_guidance")
+        ),
+        "extra_final_ranking_guidance": _normalize_text_list(
+            llm_review_config.get("extra_final_ranking_guidance")
+        ),
     }
 
 
-def load_recipient_profiles():
-    configured = load_json_config(
-        "RECIPIENT_PROFILES_JSON",
-        local_file_name="recipient_profiles.local.json",
-        default_value=None,
-    )
+def load_recipient_profiles(storage=None):
+    if storage is None:
+        database_url = os.getenv("DATABASE_URL", "").strip()
+        if not database_url:
+            raise RuntimeError(
+                "DATABASE_URL is required to load recipient profiles from the database."
+            )
+        from storage import create_storage
 
-    if configured is None:
-        configured = _default_profile()
+        storage = create_storage(database_url)
+        storage.ensure_schema()
 
-    if not isinstance(configured, list):
-        raise RuntimeError("Recipient profiles config must be a JSON array.")
+    configured = storage.load_recipient_profile_configs(enabled_only=True)
+    if not configured:
+        raise RuntimeError(
+            "No enabled recipient profiles were found in app_config.recipient_profiles. "
+            "Load profiles into the database before running the scraper."
+        )
 
-    normalized_profiles = [
-        _normalize_profile(profile, index)
+    runtime_profiles = [
+        _to_runtime_profile(
+            normalize_grouped_profile(
+                profile,
+                index=index,
+                sender_email=os.getenv("JOB_SCRAPER_EMAIL", ""),
+            )
+        )
         for index, profile in enumerate(configured)
     ]
-
-    profile_ids = [profile["id"] for profile in normalized_profiles]
-    if len(profile_ids) != len(set(profile_ids)):
+    recipient_ids = [profile["id"] for profile in runtime_profiles]
+    if len(recipient_ids) != len(set(recipient_ids)):
         raise RuntimeError("Recipient profile ids must be unique.")
-
-    return normalized_profiles
+    return runtime_profiles

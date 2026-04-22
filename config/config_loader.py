@@ -25,10 +25,29 @@ def load_json_config(
     example_file_name=None,
     default_value=None,
 ):
+    resolved = resolve_json_config(
+        env_name,
+        local_file_name=local_file_name,
+        example_file_name=example_file_name,
+        default_value=default_value,
+    )
+    return resolved["value"]
+
+
+def resolve_json_config(
+    env_name,
+    local_file_name=None,
+    example_file_name=None,
+    default_value=None,
+):
     env_value = os.getenv(env_name, "").strip()
     if env_value:
         try:
-            return json.loads(env_value)
+            return {
+                "value": json.loads(env_value),
+                "source": "environment",
+                "path": env_name,
+            }
         except json.JSONDecodeError as exc:
             lines = env_value.splitlines()
             context_line = ""
@@ -41,16 +60,24 @@ def load_json_config(
 
     candidate_paths = []
     if local_file_name:
-        candidate_paths.append(BASE_DIR / local_file_name)
+        candidate_paths.append(("local_file", BASE_DIR / local_file_name))
     if example_file_name:
-        candidate_paths.append(EXAMPLES_DIR / example_file_name)
+        candidate_paths.append(("example_file", EXAMPLES_DIR / example_file_name))
 
-    for candidate_path in candidate_paths:
+    for source_name, candidate_path in candidate_paths:
         parsed = _load_json_from_file(candidate_path)
         if parsed is not None:
-            return parsed
+            return {
+                "value": parsed,
+                "source": source_name,
+                "path": str(candidate_path),
+            }
 
-    return default_value
+    return {
+        "value": default_value,
+        "source": "default",
+        "path": "",
+    }
 
 
 def load_list_config(

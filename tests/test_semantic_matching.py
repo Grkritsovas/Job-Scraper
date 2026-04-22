@@ -7,7 +7,7 @@ class FakeMatcher:
     def __init__(self):
         self.scored_descriptions = []
 
-    def score_description(self, description, profile_specs, negative_profile_texts=None):
+    def score_description(self, description, profile_specs):
         self.scored_descriptions.append(description)
         top_label = profile_specs[0]["label"]
         second_label = profile_specs[1]["label"] if len(profile_specs) > 1 else top_label
@@ -29,8 +29,6 @@ class FakeMatcher:
             "second_profile": second_label,
             "second_score": second_score,
             "score_margin": top_score - second_score,
-            "seniority_penalty_score": 0.0,
-            "seniority_penalty_applied": 0.0,
             "fit_summary": " | ".join(
                 f"{spec['label']} {round((top_score - (index * 0.08)) * 100)}%"
                 for index, spec in enumerate(profile_specs)
@@ -92,6 +90,24 @@ class SemanticMatchingTests(unittest.TestCase):
         )
         self.assertEqual("experience", reason)
 
+    def test_recipient_specific_max_years_experience_relaxes_hard_filter(self):
+        jobs = [
+            make_job(
+                url="https://example.com/two-years",
+                description="Requires 2+ years of experience in Python.",
+            )
+        ]
+        recipient_profile = {
+            "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
+            "min_top_score": 0.45,
+            "max_years_experience": 2,
+            "care_about_sponsorship": False,
+            "use_sponsor_lookup": False,
+        }
+
+        ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
+        self.assertEqual(1, len(ranked_jobs))
+
     def test_sponsorship_status_is_info_only_for_ranking(self):
         jobs = [
             make_job(
@@ -114,8 +130,6 @@ class SemanticMatchingTests(unittest.TestCase):
         recipient_profile = {
             "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
             "min_top_score": 0.47,
-            "negative_profile_texts": [],
-            "seniority_penalty_weight": 0.18,
             "care_about_sponsorship": False,
             "use_sponsor_lookup": False,
         }
@@ -134,8 +148,6 @@ class SemanticMatchingTests(unittest.TestCase):
         recipient_profile = {
             "semantic_profiles": ["data_analyst", "data_science", "ai_ml_engineer"],
             "min_top_score": 0.47,
-            "negative_profile_texts": [],
-            "seniority_penalty_weight": 0.18,
             "junior_boost_multiplier": 1.2,
             "junior_boost_terms": [
                 "junior",
@@ -165,8 +177,6 @@ class SemanticMatchingTests(unittest.TestCase):
         recipient_profile = {
             "semantic_profiles": ["data_analyst", "data_science", "ai_ml_engineer"],
             "min_top_score": 0.47,
-            "negative_profile_texts": [],
-            "seniority_penalty_weight": 0.18,
             "junior_boost_multiplier": 1.1,
             "junior_boost_terms": [
                 "junior",
@@ -196,8 +206,6 @@ class SemanticMatchingTests(unittest.TestCase):
         recipient_profile = {
             "semantic_profiles": ["data_analyst", "data_science", "ai_ml_engineer"],
             "min_top_score": 0.47,
-            "negative_profile_texts": [],
-            "seniority_penalty_weight": 0.18,
             "junior_boost_multiplier": 1.2,
             "junior_boost_terms": ["junior", "graduate", "apprentice"],
             "care_about_sponsorship": False,
@@ -209,20 +217,6 @@ class SemanticMatchingTests(unittest.TestCase):
         self.assertEqual(1, len(ranked_jobs))
         self.assertAlmostEqual(0.552, ranked_jobs[0]["top_score"])
         self.assertEqual(1.2, ranked_jobs[0]["title_boost_multiplier"])
-
-    def test_recipient_can_disable_seniority_penalty(self):
-        jobs = [make_job(url="https://example.com/soft-penalty")]
-        recipient_profile = {
-            "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
-            "min_top_score": 0.45,
-            "negative_profile_texts": ["senior role"],
-            "seniority_penalty_weight": 0.0,
-            "care_about_sponsorship": False,
-            "use_sponsor_lookup": False,
-        }
-
-        ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
-        self.assertEqual(1, len(ranked_jobs))
 
     def test_salary_penalty_filters_unrealistic_salary_range(self):
         jobs = [

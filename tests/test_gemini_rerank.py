@@ -66,10 +66,15 @@ class GeminiRerankTests(unittest.TestCase):
         recipient_profile = {
             "semantic_profiles": ["swe", "data_science"],
             "semantic_profile_texts": {},
-            "negative_profile_texts": ["Senior manager role."],
             "cv_summary": "Strong Python, ML, and data project experience.",
             "preferred_salary_max_gbp": 85000.0,
             "salary_hard_cap_gbp": 95000.0,
+            "extra_screening_guidance": [
+                "Prefer roles explicitly framed as junior or early-career opportunities."
+            ],
+            "extra_final_ranking_guidance": [
+                "Prefer realistic employability over prestige or thematic overlap."
+            ],
         }
         client = FakeClient(
             [
@@ -140,17 +145,24 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertIn('"preferred_salary_max_gbp": 85000.0', first_prompt)
         self.assertIn('"salary_hard_cap_gbp": 95000.0', first_prompt)
         self.assertIn('"salary_upper_bound_gbp": 100000.0', first_prompt)
+        self.assertIn(
+            "Prefer roles explicitly framed as junior or early-career opportunities.",
+            first_prompt,
+        )
         self.assertIn('"matched_profile": "Data Science"', second_prompt)
         self.assertIn('"supporting_evidence": [', second_prompt)
         self.assertIn('"batch_fit_score": 84', second_prompt)
         self.assertIn('"salary_upper_bound_gbp": 100000.0', second_prompt)
+        self.assertIn(
+            "Prefer realistic employability over prestige or thematic overlap.",
+            second_prompt,
+        )
 
     def test_rerank_uses_top_n_and_splits_batches(self):
         jobs = [make_job(index) for index in range(1, 13)]
         recipient_profile = {
             "semantic_profiles": ["swe"],
             "semantic_profile_texts": {},
-            "negative_profile_texts": [],
             "cv_summary": "",
         }
         client = FakeClient(
@@ -188,7 +200,6 @@ class GeminiRerankTests(unittest.TestCase):
         recipient_profile = {
             "semantic_profiles": ["swe"],
             "semantic_profile_texts": {},
-            "negative_profile_texts": [],
             "cv_summary": "",
         }
 
@@ -243,7 +254,6 @@ class GeminiRerankTests(unittest.TestCase):
         recipient_profile = {
             "semantic_profiles": ["swe"],
             "semantic_profile_texts": {},
-            "negative_profile_texts": [],
             "cv_summary": "",
         }
 
@@ -324,7 +334,6 @@ class GeminiRerankTests(unittest.TestCase):
         recipient_profile = {
             "semantic_profiles": ["swe"],
             "semantic_profile_texts": {},
-            "negative_profile_texts": [],
             "cv_summary": "",
         }
 
@@ -405,7 +414,6 @@ class GeminiRerankTests(unittest.TestCase):
         recipient_profile = {
             "semantic_profiles": ["swe"],
             "semantic_profile_texts": {},
-            "negative_profile_texts": [],
             "cv_summary": "",
         }
 
@@ -423,7 +431,6 @@ class GeminiRerankTests(unittest.TestCase):
         recipient_profile = {
             "semantic_profiles": ["swe"],
             "semantic_profile_texts": {},
-            "negative_profile_texts": [],
             "cv_summary": "",
         }
 
@@ -444,7 +451,6 @@ class GeminiRerankTests(unittest.TestCase):
         base_profile = {
             "semantic_profiles": ["swe"],
             "semantic_profile_texts": {},
-            "negative_profile_texts": [],
             "cv_summary": "",
         }
         client_false = FakeClient(

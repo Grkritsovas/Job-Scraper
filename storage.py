@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 from pathlib import Path
@@ -5,7 +6,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 
-SCHEMA_STATEMENTS = [
+SEEN_JOBS_SCHEMA_STATEMENTS = [
     """
     CREATE TABLE IF NOT EXISTS recipient_seen_jobs (
         recipient_id TEXT NOT NULL,
@@ -17,6 +18,53 @@ SCHEMA_STATEMENTS = [
         location TEXT,
         first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (recipient_id, job_url)
+    )
+    """,
+]
+
+SQLITE_RECIPIENT_PROFILE_SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS recipient_profiles (
+        recipient_id TEXT NOT NULL PRIMARY KEY,
+        email TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        config_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS recipient_profile_versions (
+        version_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        recipient_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        config_json TEXT NOT NULL,
+        saved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+]
+
+POSTGRES_RECIPIENT_PROFILE_SCHEMA_STATEMENTS = [
+    "CREATE SCHEMA IF NOT EXISTS app_config",
+    """
+    CREATE TABLE IF NOT EXISTS app_config.recipient_profiles (
+        recipient_id TEXT NOT NULL PRIMARY KEY,
+        email TEXT NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        config_json JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_config.recipient_profile_versions (
+        version_id BIGSERIAL PRIMARY KEY,
+        recipient_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        config_json JSONB NOT NULL,
+        saved_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
     """,
 ]
@@ -42,6 +90,126 @@ class Storage:
             return
 
         self._ensure_postgres_schema()
+
+    def load_recipient_profile_configs(self, enabled_only=True):
+        rows = self._fetch_all(
+            f"""
+            SELECT config_json
+            FROM {self._recipient_profiles_table_name()}
+            {"WHERE enabled = " + self._true_literal() if enabled_only else ""}
+            ORDER BY recipient_id
+            """,
+            (),
+        )
+        configs = []
+        for row in rows:
+            parsed = self._load_json_field(row.get("config_json"))
+            if isinstance(parsed, dict):
+                configs.append(parsed)
+        return configs
+
+    def upsert_recipient_profile_configs(self, rows):
+        if not rows:
+            return
+
+        if self.backend == "sqlite":
+            connection = self._connect_sqlite()
+            try:
+                for row in rows:
+                    serialized = json.dumps(row["config"], ensure_ascii=True)
+                    connection.execute(
+                        """
+                        INSERT INTO recipient_profiles (
+                            recipient_id,
+                            email,
+                            enabled,
+                            config_json,
+                            updated_at
+                        )
+                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(recipient_id) DO UPDATE SET
+                            email = excluded.email,
+                            enabled = excluded.enabled,
+                            config_json = excluded.config_json,
+                            updated_at = CURRENT_TIMESTAMP
+                        """,
+                        (
+                            row["recipient_id"],
+                            row["email"],
+                            1 if row["enabled"] else 0,
+                            serialized,
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO recipient_profile_versions (
+                            recipient_id,
+                            email,
+                            enabled,
+                            config_json
+                        )
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            row["recipient_id"],
+                            row["email"],
+                            1 if row["enabled"] else 0,
+                            serialized,
+                        ),
+                    )
+                connection.commit()
+            finally:
+                connection.close()
+            return
+
+        connection = self._connect_postgres()
+        try:
+            with connection.cursor() as cursor:
+                for row in rows:
+                    serialized = json.dumps(row["config"], ensure_ascii=True)
+                    cursor.execute(
+                        """
+                        INSERT INTO app_config.recipient_profiles (
+                            recipient_id,
+                            email,
+                            enabled,
+                            config_json,
+                            updated_at
+                        )
+                        VALUES (%s, %s, %s, %s::jsonb, CURRENT_TIMESTAMP)
+                        ON CONFLICT (recipient_id) DO UPDATE SET
+                            email = EXCLUDED.email,
+                            enabled = EXCLUDED.enabled,
+                            config_json = EXCLUDED.config_json,
+                            updated_at = CURRENT_TIMESTAMP
+                        """,
+                        (
+                            row["recipient_id"],
+                            row["email"],
+                            row["enabled"],
+                            serialized,
+                        ),
+                    )
+                    cursor.execute(
+                        """
+                        INSERT INTO app_config.recipient_profile_versions (
+                            recipient_id,
+                            email,
+                            enabled,
+                            config_json
+                        )
+                        VALUES (%s, %s, %s, %s::jsonb)
+                        """,
+                        (
+                            row["recipient_id"],
+                            row["email"],
+                            row["enabled"],
+                            serialized,
+                        ),
+                    )
+            connection.commit()
+        finally:
+            connection.close()
 
     def load_seen_urls(self, recipient_id):
         rows = self._fetch_all(
@@ -141,7 +309,9 @@ class Storage:
     def _ensure_sqlite_schema(self):
         connection = self._connect_sqlite()
         try:
-            for statement in SCHEMA_STATEMENTS:
+            for statement in SEEN_JOBS_SCHEMA_STATEMENTS:
+                connection.execute(statement)
+            for statement in SQLITE_RECIPIENT_PROFILE_SCHEMA_STATEMENTS:
                 connection.execute(statement)
             connection.commit()
         finally:
@@ -151,7 +321,9 @@ class Storage:
         connection = self._connect_postgres()
         try:
             with connection.cursor() as cursor:
-                for statement in SCHEMA_STATEMENTS:
+                for statement in SEEN_JOBS_SCHEMA_STATEMENTS:
+                    cursor.execute(statement)
+                for statement in POSTGRES_RECIPIENT_PROFILE_SCHEMA_STATEMENTS:
                     cursor.execute(statement)
             connection.commit()
         finally:
@@ -185,6 +357,30 @@ class Storage:
         placeholder = "?" if self.backend == "sqlite" else "%s"
         return template.replace("{placeholder}", placeholder)
 
+    def _recipient_profiles_table_name(self):
+        if self.backend == "sqlite":
+            return "recipient_profiles"
+        return "app_config.recipient_profiles"
+
+    def _true_literal(self):
+        return "1" if self.backend == "sqlite" else "TRUE"
+
+    @staticmethod
+    def _load_json_field(value):
+        if isinstance(value, dict):
+            return value
+
+        if not value:
+            return None
+
+        if isinstance(value, (bytes, bytearray)):
+            value = value.decode("utf-8")
+
+        if isinstance(value, str):
+            return json.loads(value)
+
+        return None
+
     @staticmethod
     def _detect_backend(database_url):
         if database_url.startswith("sqlite:///"):
@@ -202,4 +398,7 @@ class Storage:
     @staticmethod
     def _resolve_sqlite_path(database_url):
         relative_path = database_url.replace("sqlite:///", "", 1)
-        return str((BASE_DIR / relative_path).resolve())
+        candidate_path = Path(relative_path)
+        if candidate_path.is_absolute():
+            return str(candidate_path.resolve())
+        return str((BASE_DIR / candidate_path).resolve())

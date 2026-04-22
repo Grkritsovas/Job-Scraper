@@ -46,11 +46,11 @@ Recommended setup:
 1. Fork the repo.
 2. Create a Postgres database and save the connection string as `DATABASE_URL`.
 3. Add your sender email and app password.
-4. Add `RECIPIENT_PROFILES_JSON`.
+4. Load recipient profiles into `app_config.recipient_profiles`.
 5. Optionally add `GEMINI_API_KEY`.
 6. Run the workflow manually once, then enable the schedule.
 
-The full step-by-step setup, variable reference, recipient profile controls, and target override documentation are in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+The full step-by-step setup, variable reference, database-backed recipient profile shape, and target override documentation are in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 Starter config files and example shapes are in [examples/README.md](examples/README.md).
 

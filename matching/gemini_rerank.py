@@ -184,15 +184,9 @@ def _build_candidate_context(recipient_profile):
         }
         for spec in build_profile_specs(recipient_profile)
     ]
-    negative_profile_texts = [
-        normalize_text_whitespace(text)
-        for text in recipient_profile.get("negative_profile_texts", [])
-        if normalize_text_whitespace(text)
-    ]
     context = {
         "target_profiles": profiles,
         "cv_summary": normalize_text_whitespace(recipient_profile.get("cv_summary", "")),
-        "negative_profile_texts": negative_profile_texts,
     }
     if recipient_profile.get("preferred_salary_max_gbp") is not None:
         context["preferred_salary_max_gbp"] = recipient_profile.get(
@@ -213,6 +207,16 @@ def _add_salary_rule(instructions, recipient_profile):
         "clearly exceed the candidate's target range. Treat roles far above the "
         "preferred salary as weaker matches, even when the skills overlap."
     )
+
+
+def _add_extra_guidance(instructions, key, guidance_items):
+    cleaned = [
+        normalize_text_whitespace(item)
+        for item in (guidance_items or [])
+        if normalize_text_whitespace(item)
+    ]
+    if cleaned:
+        instructions[key] = cleaned
 
 
 def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
@@ -282,6 +286,11 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "Do not keep these roles unless the candidate context directly confirms eligibility."
         )
     _add_salary_rule(instructions, recipient_profile)
+    _add_extra_guidance(
+        instructions,
+        "extra_screening_guidance",
+        recipient_profile.get("extra_screening_guidance"),
+    )
 
     candidate_payload = {
         "instructions": instructions,
@@ -352,6 +361,11 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "Do not keep these roles unless the candidate context directly confirms eligibility."
         )
     _add_salary_rule(instructions, recipient_profile)
+    _add_extra_guidance(
+        instructions,
+        "extra_final_ranking_guidance",
+        recipient_profile.get("extra_final_ranking_guidance"),
+    )
 
     payload = {
         "instructions": instructions,

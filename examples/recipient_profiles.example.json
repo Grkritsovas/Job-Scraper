@@ -1,45 +1,95 @@
 [
   {
     "id": "george",
-    "email": "you@example.com",
-    "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
-    "semantic_profile_texts": {},
-    "min_top_score": 0.42,
-    "negative_profile_texts": [
-      "Senior or staff level role requiring multiple years of industry experience, technical leadership, mentoring, architecture ownership, and proven delivery of production systems at scale."
-    ],
-    "cv_summary": "Early-career technical candidate with strong Python, applied machine learning, data processing, and project-based software engineering experience. Best fit for junior roles that value transferable technical problem solving over long commercial experience.",
-    "seniority_penalty_weight": 0.18,
-    "junior_boost_multiplier": 1.2,
-    "junior_boost_terms": ["junior", "grad", "graduate", "entry level", "entry-level"],
-    "preferred_salary_max_gbp": 45000,
-    "salary_hard_cap_gbp": 70000,
-    "salary_penalty_max": 0.35,
-    "care_about_sponsorship": false,
-    "care_about_hard_eligibility": false,
-    "use_sponsor_lookup": false
+    "enabled": true,
+    "delivery": {
+      "email": "you@example.com"
+    },
+    "candidate": {
+      "summary": "Early-career technical candidate with strong Python, applied machine learning, data processing, and project-based software engineering experience. Best fit for junior roles that value transferable technical problem solving over long commercial experience.",
+      "target_roles": [
+        {
+          "id": "swe"
+        },
+        {
+          "id": "data_science"
+        },
+        {
+          "id": "ai_ml_engineer"
+        }
+      ]
+    },
+    "job_preferences": {
+      "target_seniority": {
+        "max_explicit_years": 1,
+        "boost_multiplier": 1.2,
+        "boost_title_terms": ["junior", "grad", "graduate", "entry level", "entry-level"]
+      },
+      "salary": {
+        "preferred_max_gbp": 45000,
+        "hard_cap_gbp": 70000,
+        "penalty_strength": 0.35
+      }
+    },
+    "eligibility": {
+      "needs_sponsorship": false,
+      "check_hard_eligibility": false,
+      "use_sponsor_lookup": false
+    },
+    "matching": {
+      "semantic_threshold": 0.42
+    },
+    "llm_review": {
+      "extra_screening_guidance": [],
+      "extra_final_ranking_guidance": []
+    }
   },
   {
     "id": "maria",
-    "email": "maria@example.com",
-    "semantic_profiles": ["marketing_assistant", "ai_ml"],
-    "semantic_profile_texts": {
-      "marketing_assistant": "Junior marketing and communications professional with experience supporting marketing teams in structured business environments. Best aligned with early-career marketing assistant, communications support, campaign operations, coordination, and content-support roles.",
-      "ai_ml": "Early-career AI and data-focused graduate profile. Best aligned with junior applied AI, machine learning, and analytical support roles where experimentation, modelling fundamentals, and practical Python-based ML work matter more than production ownership."
+    "enabled": true,
+    "delivery": {
+      "email": "maria@example.com"
     },
-    "min_top_score": 0.42,
-    "negative_profile_texts": [
-      "Senior or highly autonomous role requiring proven commercial experience, independent ownership, strategic responsibility, or delivery in real production or business environments. Includes roles expecting multiple years of experience, leadership, mentoring, end-to-end ownership, operational accountability, or advanced specialization."
-    ],
-    "cv_summary": "Early-career candidate with communication, coordination, and analytical support strengths, plus growing AI and data exposure. Best fit for junior roles with clear structure, mentoring, and room to learn on the job.",
-    "seniority_penalty_weight": 0.18,
-    "junior_boost_multiplier": 1.2,
-    "junior_boost_terms": ["junior", "grad", "graduate", "entry level", "entry-level"],
-    "preferred_salary_max_gbp": 45000,
-    "salary_hard_cap_gbp": 70000,
-    "salary_penalty_max": 0.35,
-    "care_about_sponsorship": true,
-    "care_about_hard_eligibility": true,
-    "use_sponsor_lookup": true
+    "candidate": {
+      "summary": "Early-career candidate with communication, coordination, and analytical support strengths, plus growing AI and data exposure. Best fit for junior roles with clear structure, mentoring, and room to learn on the job.",
+      "target_roles": [
+        {
+          "id": "marketing_assistant",
+          "match_text": "Junior marketing and communications professional with experience supporting marketing teams in structured business environments. Best aligned with early-career marketing assistant, communications support, campaign operations, coordination, and content-support roles."
+        },
+        {
+          "id": "ai_ml",
+          "match_text": "Early-career AI and data-focused graduate profile. Best aligned with junior applied AI, machine learning, and analytical support roles where experimentation, modelling fundamentals, and practical Python-based ML work matter more than production ownership."
+        }
+      ]
+    },
+    "job_preferences": {
+      "target_seniority": {
+        "max_explicit_years": 1,
+        "boost_multiplier": 1.2,
+        "boost_title_terms": ["junior", "grad", "graduate", "entry level", "entry-level", "assistant", "coordinator"]
+      },
+      "salary": {
+        "preferred_max_gbp": 45000,
+        "hard_cap_gbp": 70000,
+        "penalty_strength": 0.35
+      }
+    },
+    "eligibility": {
+      "needs_sponsorship": true,
+      "check_hard_eligibility": true,
+      "use_sponsor_lookup": true
+    },
+    "matching": {
+      "semantic_threshold": 0.42
+    },
+    "llm_review": {
+      "extra_screening_guidance": [
+        "Prefer roles that clearly mention training, mentorship, or early-career growth."
+      ],
+      "extra_final_ranking_guidance": [
+        "Prefer roles with clear evidence of day-to-day fit over broad thematic overlap."
+      ]
+    }
   }
 ]

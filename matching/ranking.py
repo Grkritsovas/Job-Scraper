@@ -2,12 +2,12 @@ import os
 import re
 from collections import Counter
 
-from matching.hard_filters import get_hard_filter_reason
-from matching.models import ALL_MINILM_L6_V2
-from matching.profile_library import (
-    DEFAULT_NEGATIVE_PROFILE_TEXTS,
-    build_profile_specs,
+from matching.hard_filters import (
+    DEFAULT_MAX_YEARS_EXPERIENCE,
+    get_hard_filter_reason,
 )
+from matching.models import ALL_MINILM_L6_V2
+from matching.profile_library import build_profile_specs
 from shared.descriptions import build_matching_text
 
 
@@ -17,8 +17,6 @@ EMBEDDING_MODEL_NAME = os.getenv(
     "JOB_SCRAPER_EMBEDDING_MODEL", SELECTED_EMBEDDING_MODEL.model_name
 )
 DEFAULT_MIN_PROFILE_SCORE = float(os.getenv("JOB_SCRAPER_MIN_SCORE", "0.42"))
-SENIORITY_PENALTY_FLOOR = 0.35
-DEFAULT_SENIORITY_PENALTY_WEIGHT = 0.18
 DEFAULT_SALARY_PENALTY_MAX = 0.35
 DEFAULT_JUNIOR_BOOST_MULTIPLIER = 1.2
 DEFAULT_JUNIOR_BOOST_TERMS = (
@@ -59,7 +57,6 @@ class ProfileMatcher:
         self.util = util
         self.description_embedding_cache = {}
         self.profile_embedding_cache = {}
-        self.negative_embedding_cache = {}
 
     def _get_description_embedding(self, description):
         if description not in self.description_embedding_cache:
@@ -78,24 +75,7 @@ class ProfileMatcher:
             )
         return self.profile_embedding_cache[cache_key]
 
-    def _get_negative_embeddings(self, negative_profile_texts):
-        normalized_negative_texts = tuple(
-            text.strip()
-            for text in (negative_profile_texts or DEFAULT_NEGATIVE_PROFILE_TEXTS)
-            if text and text.strip()
-        )
-        if not normalized_negative_texts:
-            return None
-
-        if normalized_negative_texts not in self.negative_embedding_cache:
-            self.negative_embedding_cache[normalized_negative_texts] = self.model.encode(
-                list(normalized_negative_texts),
-                normalize_embeddings=True,
-            )
-
-        return self.negative_embedding_cache[normalized_negative_texts]
-
-    def score_description(self, description, profile_specs, negative_profile_texts=None):
+    def score_description(self, description, profile_specs):
         description_embedding = self._get_description_embedding(description)
         profile_embeddings = self._get_profile_embeddings(profile_specs)
         similarities = self.util.cos_sim(
@@ -119,16 +99,6 @@ class ProfileMatcher:
         else:
             second_profile, second_score = top_profile, 0.0
 
-        negative_embeddings = self._get_negative_embeddings(negative_profile_texts)
-        seniority_penalty_score = 0.0
-        if negative_embeddings is not None:
-            seniority_penalty_score = max(
-                self.util.cos_sim(
-                    description_embedding,
-                    negative_embeddings,
-                )[0].tolist()
-            )
-
         return {
             "profile_scores": profile_scores,
             "top_profile": top_profile,
@@ -136,7 +106,6 @@ class ProfileMatcher:
             "second_profile": second_profile,
             "second_score": second_score,
             "score_margin": top_score - second_score,
-            "seniority_penalty_score": seniority_penalty_score,
             "fit_summary": format_fit_summary(ranked_profiles),
         }
 
@@ -234,21 +203,6 @@ def apply_title_boost(score_data, job, recipient_profile):
     }
 
 
-def apply_seniority_penalty(score_data, recipient_profile):
-    seniority_penalty_weight = float(
-        recipient_profile.get(
-            "seniority_penalty_weight",
-            DEFAULT_SENIORITY_PENALTY_WEIGHT,
-        )
-    )
-    seniority_penalty_applied = max(
-        0.0,
-        score_data["seniority_penalty_score"] - SENIORITY_PENALTY_FLOOR,
-    ) * seniority_penalty_weight
-    ranking_score = score_data["top_score"] - seniority_penalty_applied
-    return ranking_score, seniority_penalty_applied
-
-
 def _parse_salary_amount(amount_text, has_k_suffix):
     numeric_value = float(amount_text.replace(",", ""))
     if has_k_suffix:
@@ -332,7 +286,13 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
     hard_filter_reasons = Counter()
 
     for job in jobs:
-        hard_filter_reason = get_hard_filter_reason(job)
+        hard_filter_reason = get_hard_filter_reason(
+            job,
+            recipient_profile.get(
+                "max_years_experience",
+                DEFAULT_MAX_YEARS_EXPERIENCE,
+            ),
+        )
         if hard_filter_reason is not None:
             stats["hard_filtered_jobs"] += 1
             hard_filter_reasons[hard_filter_reason] += 1
@@ -345,14 +305,9 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
         score_data = matcher.score_description(
             match_text,
             profile_specs,
-            recipient_profile.get("negative_profile_texts"),
         )
         score_data = apply_title_boost(score_data, job, recipient_profile)
-        ranking_score, seniority_penalty_applied = apply_seniority_penalty(
-            score_data,
-            recipient_profile,
-        )
-        score_data["seniority_penalty_applied"] = seniority_penalty_applied
+        ranking_score = score_data["top_score"]
 
         ranking_score, salary_upper_bound, salary_penalty_applied = apply_salary_penalty(
             job,

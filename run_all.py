@@ -117,7 +117,7 @@ def main():
     diagnostics = ScrapeDiagnostics(
         enabled=os.getenv("JOB_SCRAPER_DIAGNOSTICS", "1") != "0"
     )
-    recipient_profiles = load_recipient_profiles()
+    recipient_profiles = load_recipient_profiles(storage=storage)
     sponsor_company_lookup = load_sponsor_company_lookup()
     diagnostics.record_sponsor_lookup_summary(len(sponsor_company_lookup))
     if sponsor_aware_profiles(recipient_profiles) and not sponsor_company_lookup:

@@ -1,85 +1,190 @@
-import json
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from config.recipient_profiles import load_recipient_profiles
+from config.recipient_profiles import (
+    load_recipient_profiles,
+    normalize_grouped_profile,
+    prepare_recipient_profile_db_rows,
+)
+from storage import create_storage
 
 
 class RecipientProfilesTests(unittest.TestCase):
-    def test_loads_profiles_from_env_json(self):
-        configured = [
+    def setUp(self):
+        self.test_dir = Path("tests/.tmp_recipient_profiles")
+        self.test_dir.mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self):
+        for child in self.test_dir.glob("*"):
+            child.unlink()
+        self.test_dir.rmdir()
+
+    def test_normalize_grouped_profile_maps_runtime_fields(self):
+        grouped_profile = normalize_grouped_profile(
             {
                 "id": "george",
-                "email": "george@example.com",
-                "semantic_profiles": ["swe", "data_science"],
-                "min_top_score": 0.51,
-                "negative_profile_texts": ["senior role"],
-                "seniority_penalty_weight": 0.25,
-                "preferred_salary_max_gbp": 45000,
-                "salary_hard_cap_gbp": 50000,
-                "salary_penalty_max": 0.35,
-                "care_about_sponsorship": True,
-                "care_about_hard_eligibility": True,
-                "use_sponsor_lookup": True,
-                "cv_summary": "Strong Python and ML project experience for junior roles.",
-                "junior_boost_multiplier": 1.15,
-                "junior_boost_terms": ["junior", "graduate", "apprentice"],
+                "enabled": True,
+                "delivery": {"email": "george@example.com"},
+                "candidate": {
+                    "summary": "Strong Python and ML project experience for junior roles.",
+                    "target_roles": [
+                        {"id": "swe"},
+                        {
+                            "id": "data_analyst",
+                            "match_text": "Early-career data analyst profile text.",
+                        },
+                    ],
+                },
+                "job_preferences": {
+                    "target_seniority": {
+                        "max_explicit_years": 2,
+                        "boost_multiplier": 1.15,
+                        "boost_title_terms": ["junior", "graduate", "apprentice"],
+                    },
+                    "salary": {
+                        "preferred_max_gbp": 45000,
+                        "hard_cap_gbp": 50000,
+                        "penalty_strength": 0.35,
+                    },
+                },
+                "eligibility": {
+                    "needs_sponsorship": True,
+                    "check_hard_eligibility": True,
+                    "use_sponsor_lookup": True,
+                },
+                "matching": {
+                    "semantic_threshold": 0.51,
+                },
+                "llm_review": {
+                    "extra_screening_guidance": [
+                        "Prefer clearly junior titles.",
+                    ],
+                    "extra_final_ranking_guidance": [
+                        "Prefer realistic employability over prestige.",
+                    ],
+                },
             }
-        ]
+        )
+
+        rows = prepare_recipient_profile_db_rows([grouped_profile])
+        self.assertEqual(1, len(rows))
+        self.assertEqual("george", rows[0]["recipient_id"])
+        self.assertEqual("george@example.com", rows[0]["email"])
+        self.assertEqual(2, rows[0]["config"]["job_preferences"]["target_seniority"]["max_explicit_years"])
+
+    def test_loads_profiles_from_storage(self):
+        db_path = self.test_dir / "profiles.db"
+        storage = create_storage(f"sqlite:///{db_path}")
+        storage.ensure_schema()
+        storage.upsert_recipient_profile_configs(
+            prepare_recipient_profile_db_rows(
+                [
+                    {
+                        "id": "george",
+                        "enabled": True,
+                        "delivery": {"email": "george@example.com"},
+                        "candidate": {
+                            "summary": "Strong Python and ML project experience.",
+                            "target_roles": [{"id": "swe"}],
+                        },
+                        "job_preferences": {
+                            "target_seniority": {
+                                "max_explicit_years": 2,
+                                "boost_multiplier": 1.1,
+                                "boost_title_terms": ["junior", "graduate"],
+                            },
+                            "salary": {
+                                "preferred_max_gbp": 45000,
+                                "hard_cap_gbp": 55000,
+                                "penalty_strength": 0.2,
+                            },
+                        },
+                        "eligibility": {
+                            "needs_sponsorship": False,
+                            "check_hard_eligibility": True,
+                            "use_sponsor_lookup": True,
+                        },
+                        "matching": {
+                            "semantic_threshold": 0.5,
+                        },
+                        "llm_review": {
+                            "extra_screening_guidance": [
+                                "Prefer early-career roles."
+                            ],
+                            "extra_final_ranking_guidance": [
+                                "Prefer clearer evidence."
+                            ],
+                        },
+                    },
+                    {
+                        "id": "disabled",
+                        "enabled": False,
+                        "delivery": {"email": "disabled@example.com"},
+                        "candidate": {
+                            "summary": "",
+                            "target_roles": [{"id": "swe"}],
+                        },
+                        "job_preferences": {
+                            "target_seniority": {
+                                "max_explicit_years": 1,
+                                "boost_multiplier": 1.2,
+                                "boost_title_terms": ["junior"],
+                            },
+                            "salary": {
+                                "preferred_max_gbp": None,
+                                "hard_cap_gbp": None,
+                                "penalty_strength": 0.35,
+                            },
+                        },
+                        "eligibility": {
+                            "needs_sponsorship": False,
+                            "check_hard_eligibility": False,
+                            "use_sponsor_lookup": False,
+                        },
+                        "matching": {
+                            "semantic_threshold": 0.42,
+                        },
+                        "llm_review": {
+                            "extra_screening_guidance": [],
+                            "extra_final_ranking_guidance": [],
+                        },
+                    },
+                ]
+            )
+        )
 
         with patch.dict(
             os.environ,
-            {"RECIPIENT_PROFILES_JSON": json.dumps(configured)},
+            {
+                "DATABASE_URL": f"sqlite:///{db_path}",
+                "JOB_SCRAPER_EMAIL": "sender@example.com",
+            },
             clear=True,
         ):
-            profiles = load_recipient_profiles()
+            profiles = load_recipient_profiles(storage=storage)
 
         self.assertEqual(1, len(profiles))
         self.assertEqual("george", profiles[0]["id"])
         self.assertEqual("george@example.com", profiles[0]["email"])
-        self.assertEqual(["swe", "data_science"], profiles[0]["semantic_profiles"])
-        self.assertEqual(0.51, profiles[0]["min_top_score"])
-        self.assertEqual(["senior role"], profiles[0]["negative_profile_texts"])
-        self.assertEqual(0.25, profiles[0]["seniority_penalty_weight"])
-        self.assertEqual(45000.0, profiles[0]["preferred_salary_max_gbp"])
-        self.assertEqual(50000.0, profiles[0]["salary_hard_cap_gbp"])
-        self.assertEqual(0.35, profiles[0]["salary_penalty_max"])
-        self.assertTrue(profiles[0]["care_about_sponsorship"])
-        self.assertTrue(profiles[0]["care_about_hard_eligibility"])
-        self.assertTrue(profiles[0]["use_sponsor_lookup"])
-        self.assertEqual(
-            "Strong Python and ML project experience for junior roles.",
-            profiles[0]["cv_summary"],
-        )
-        self.assertEqual(1.15, profiles[0]["junior_boost_multiplier"])
-        self.assertEqual(
-            ["junior", "graduate", "apprentice"],
-            profiles[0]["junior_boost_terms"],
-        )
+        self.assertEqual(["swe"], profiles[0]["semantic_profiles"])
+        self.assertEqual(2, profiles[0]["max_years_experience"])
+        self.assertEqual(["Prefer early-career roles."], profiles[0]["extra_screening_guidance"])
+        self.assertEqual(["Prefer clearer evidence."], profiles[0]["extra_final_ranking_guidance"])
 
-    def test_falls_back_to_single_recipient_from_sender_email(self):
-        with patch.dict(
-            os.environ,
-            {"JOB_SCRAPER_EMAIL": "sender@example.com"},
-            clear=True,
-        ):
-            profiles = load_recipient_profiles()
+    def test_load_recipient_profiles_requires_database_url(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "DATABASE_URL is required"):
+                load_recipient_profiles()
 
-        self.assertEqual(1, len(profiles))
-        self.assertEqual("default", profiles[0]["id"])
-        self.assertEqual("sender@example.com", profiles[0]["email"])
-        self.assertEqual(
-            ["swe", "data_science", "ai_ml_engineer"],
-            profiles[0]["semantic_profiles"],
-        )
-        self.assertEqual("", profiles[0]["cv_summary"])
-        self.assertFalse(profiles[0]["care_about_hard_eligibility"])
-        self.assertEqual(1.2, profiles[0]["junior_boost_multiplier"])
-        self.assertEqual(
-            ["junior", "grad", "graduate", "entry level", "entry-level"],
-            profiles[0]["junior_boost_terms"],
-        )
+    def test_load_recipient_profiles_requires_db_profiles(self):
+        db_path = self.test_dir / "empty.db"
+        storage = create_storage(f"sqlite:///{db_path}")
+        storage.ensure_schema()
+
+        with self.assertRaisesRegex(RuntimeError, "No enabled recipient profiles"):
+            load_recipient_profiles(storage=storage)
 
 
 if __name__ == "__main__":
