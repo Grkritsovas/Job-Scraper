@@ -76,10 +76,10 @@ def create_storage(database_url=None):
 
 class Storage:
     def __init__(self, database_url):
-        self.database_url = database_url
-        self.backend = self._detect_backend(database_url)
+        self.database_url = self._normalize_database_url(database_url)
+        self.backend = self._detect_backend(self.database_url)
         self.sqlite_path = (
-            self._resolve_sqlite_path(database_url)
+            self._resolve_sqlite_path(self.database_url)
             if self.backend == "sqlite"
             else None
         )
@@ -380,6 +380,17 @@ class Storage:
             return json.loads(value)
 
         return None
+
+    @staticmethod
+    def _normalize_database_url(database_url):
+        normalized = str(database_url or "").strip()
+        if (
+            len(normalized) >= 2
+            and normalized[0] == normalized[-1]
+            and normalized[0] in {"'", '"'}
+        ):
+            normalized = normalized[1:-1].strip()
+        return normalized
 
     @staticmethod
     def _detect_backend(database_url):

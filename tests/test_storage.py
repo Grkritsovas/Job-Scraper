@@ -88,6 +88,15 @@ class StorageTests(unittest.TestCase):
         self.assertEqual("george@example.com", loaded[0]["delivery"]["email"])
         self.assertEqual(2, loaded[0]["job_preferences"]["target_seniority"]["max_explicit_years"])
 
+    def test_storage_normalizes_quoted_and_spaced_database_url(self):
+        storage = create_storage('  "postgresql://example.test/postgres"  ')
+
+        self.assertEqual("postgres", storage.backend)
+        self.assertEqual(
+            "postgresql://example.test/postgres",
+            storage.database_url,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
