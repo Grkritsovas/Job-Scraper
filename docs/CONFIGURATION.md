@@ -140,9 +140,11 @@ Each `config_json` record should look like this:
 
 ## Concurrency
 
-- Recipient processing runs concurrently with a built-in cap of `3`.
+- Recipient processing runs concurrently with a built-in cap of `4`.
 - Recipient concurrency is also clamped by the number of enabled profiles, so smaller runs only use the threads they need.
 - The implementation enforces a hard upper bound of `8` recipient workers even if the code cap is raised later.
+- Gemini calls inside the recipient threads are capped separately at `4` concurrent requests.
+- Gemini retrying uses exponential backoff with a shared retry budget of up to `10` minutes per recipient rerank attempt.
 - Scraping runs the four source families in parallel:
   - Ashby
   - Greenhouse

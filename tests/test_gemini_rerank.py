@@ -1,8 +1,10 @@
 import json
 import os
+import threading
 import unittest
 from unittest.mock import patch
 
+import matching.gemini_rerank as gemini_rerank_module
 from matching.gemini_rerank import rerank_jobs_with_gemini
 
 
@@ -54,6 +56,61 @@ class FakeClient:
 
 
 class GeminiRerankTests(unittest.TestCase):
+    def test_generate_json_response_caps_concurrent_gemini_calls_at_four(self):
+        state = {
+            "active_calls": 0,
+            "max_active_calls": 0,
+        }
+        state_lock = threading.Lock()
+        release_event = threading.Event()
+        completed = []
+
+        class BlockingModels:
+            def generate_content(self, model, contents, config):
+                with state_lock:
+                    state["active_calls"] += 1
+                    state["max_active_calls"] = max(
+                        state["max_active_calls"],
+                        state["active_calls"],
+                    )
+                release_event.wait(timeout=2)
+                with state_lock:
+                    state["active_calls"] -= 1
+                return FakeResponse({"candidates": []})
+
+        class BlockingClient:
+            def __init__(self):
+                self.models = BlockingModels()
+
+        def run_request():
+            payload = gemini_rerank_module._generate_json_response(
+                BlockingClient(),
+                "gemini-2.5-flash",
+                "prompt",
+                {"type": "object"},
+                retry_deadline=time.monotonic() + 5,
+            )
+            completed.append(payload)
+
+        import time
+
+        threads = [threading.Thread(target=run_request) for _ in range(5)]
+        for thread in threads:
+            thread.start()
+
+        while True:
+            with state_lock:
+                if state["active_calls"] == 4:
+                    break
+
+        release_event.set()
+
+        for thread in threads:
+            thread.join(timeout=2)
+
+        self.assertEqual(5, len(completed))
+        self.assertEqual(4, state["max_active_calls"])
+
     def test_rerank_uses_profiles_cv_summary_and_two_pass_shortlist(self):
         jobs = [
             make_job(1),

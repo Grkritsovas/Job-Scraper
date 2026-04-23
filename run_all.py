@@ -15,7 +15,7 @@ from shared.digest import build_digest_payloads
 from sponsorship import enrich_jobs, load_sponsor_company_lookup
 from storage import create_storage
 
-RECIPIENT_CONCURRENCY_CAP = 3
+RECIPIENT_CONCURRENCY_CAP = 4
 MAX_RECIPIENT_CONCURRENCY = 8
 SOURCE_FAMILY_CONCURRENCY = 4
 

@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import threading
 import time
 
 from matching.profile_library import build_profile_specs
@@ -13,8 +14,11 @@ DEFAULT_BATCH_SIZE = 10
 DEFAULT_DESCRIPTION_CHARS = 1600
 DEFAULT_EVIDENCE_ITEMS = 2
 DEFAULT_MAX_SEMANTIC_EMAIL_JOBS = 60
-DEFAULT_GEMINI_RETRY_ATTEMPTS = 3
-DEFAULT_GEMINI_RETRY_BASE_SECONDS = 2.0
+DEFAULT_GEMINI_RETRY_ATTEMPTS = 20
+DEFAULT_GEMINI_RETRY_BASE_SECONDS = 5.0
+GEMINI_RETRY_MAX_DELAY_SECONDS = 60.0
+GEMINI_RETRY_TOTAL_WAIT_SECONDS = 600.0
+GEMINI_CONCURRENCY_CAP = 4
 RETRYABLE_GEMINI_STATUS_CODES = {429, 500, 502, 503, 504}
 RETRYABLE_GEMINI_ERROR_MARKERS = (
     "deadline exceeded",
@@ -27,6 +31,7 @@ RETRYABLE_GEMINI_ERROR_MARKERS = (
     "timeout",
     "unavailable",
 )
+_GEMINI_CALL_LIMITER = threading.BoundedSemaphore(GEMINI_CONCURRENCY_CAP)
 PASS_ONE_JSON_SCHEMA = {
     "type": "object",
     "properties": {
@@ -427,7 +432,7 @@ def _is_retryable_gemini_error(error):
     return any(marker in normalized_message for marker in RETRYABLE_GEMINI_ERROR_MARKERS)
 
 
-def _generate_json_response(client, model, prompt, schema):
+def _generate_json_response(client, model, prompt, schema, retry_deadline=None):
     retry_attempts = max(
         1,
         _safe_int_env(
@@ -445,14 +450,15 @@ def _generate_json_response(client, model, prompt, schema):
 
     for attempt_index in range(retry_attempts):
         try:
-            response = client.models.generate_content(
-                model=model,
-                contents=prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_json_schema": schema,
-                },
-            )
+            with _GEMINI_CALL_LIMITER:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config={
+                        "response_mime_type": "application/json",
+                        "response_json_schema": schema,
+                    },
+                )
             return json.loads(getattr(response, "text", "") or "{}")
         except Exception as exc:
             is_last_attempt = attempt_index == retry_attempts - 1
@@ -460,11 +466,26 @@ def _generate_json_response(client, model, prompt, schema):
                 raise
 
             retry_number = attempt_index + 1
-            retry_delay = retry_base_seconds * (2**attempt_index)
+            retry_delay = min(
+                retry_base_seconds * (2**attempt_index),
+                GEMINI_RETRY_MAX_DELAY_SECONDS,
+            )
+            remaining_retry_budget = None
+            if retry_deadline is not None:
+                remaining_retry_budget = retry_deadline - time.monotonic()
+                if remaining_retry_budget <= 0:
+                    raise
+                retry_delay = min(retry_delay, remaining_retry_budget)
+
+            remaining_budget_suffix = ""
+            if remaining_retry_budget is not None:
+                remaining_budget_suffix = (
+                    f" Remaining retry budget {remaining_retry_budget:.1f}s."
+                )
             print(
                 "Warning: Gemini API call failed with a retryable error. "
                 f"Retrying {retry_number}/{retry_attempts - 1} in {retry_delay:.1f}s. "
-                f"{exc}"
+                f"{exc}.{remaining_budget_suffix}"
             )
             if retry_delay > 0:
                 time.sleep(retry_delay)
@@ -491,6 +512,7 @@ def _run_batch_screening(
     model,
     batch_size,
     description_chars,
+    retry_deadline,
 ):
     original_indexes = {
         job["url"]: index
@@ -516,6 +538,7 @@ def _run_batch_screening(
             model,
             prompt,
             PASS_ONE_JSON_SCHEMA,
+            retry_deadline=retry_deadline,
         )
         for item in payload.get("candidates", []):
             job_url = normalize_text_whitespace(item.get("job_url", ""))
@@ -560,7 +583,7 @@ def _run_batch_screening(
     return screened_candidates
 
 
-def _run_final_rerank(candidates, recipient_profile, client, model):
+def _run_final_rerank(candidates, recipient_profile, client, model, retry_deadline):
     if not candidates:
         return []
 
@@ -575,6 +598,7 @@ def _run_final_rerank(candidates, recipient_profile, client, model):
         model,
         prompt,
         PASS_TWO_JSON_SCHEMA,
+        retry_deadline=retry_deadline,
     )
     final_shortlist = []
     seen_urls = set()
@@ -674,6 +698,7 @@ def rerank_jobs_with_gemini(
         or os.getenv("JOB_SCRAPER_LLM_MODEL", "").strip()
         or DEFAULT_GEMINI_MODEL
     )
+    retry_deadline = time.monotonic() + GEMINI_RETRY_TOTAL_WAIT_SECONDS
 
     try:
         client = client or _build_client()
@@ -707,6 +732,7 @@ def rerank_jobs_with_gemini(
             effective_model,
             effective_batch_size,
             effective_description_chars,
+            retry_deadline,
         )
     except Exception as exc:
         error_message = str(exc)
@@ -738,6 +764,7 @@ def rerank_jobs_with_gemini(
             recipient_profile,
             client,
             effective_model,
+            retry_deadline,
         )
     except Exception as exc:
         error_message = str(exc)
