@@ -1,5 +1,6 @@
 import os
 import re
+import threading
 from collections import Counter
 
 from matching.hard_filters import (
@@ -41,6 +42,7 @@ SALARY_RANGE_PATTERNS = [
 SALARY_RATE_MARKERS = ("hour", "day", "daily", "week", "monthly")
 
 _PROFILE_MATCHER = None
+_PROFILE_MATCHER_LOCK = threading.Lock()
 
 
 class ProfileMatcher:
@@ -57,23 +59,40 @@ class ProfileMatcher:
         self.util = util
         self.description_embedding_cache = {}
         self.profile_embedding_cache = {}
+        self.cache_lock = threading.Lock()
 
     def _get_description_embedding(self, description):
-        if description not in self.description_embedding_cache:
-            self.description_embedding_cache[description] = self.model.encode(
+        with self.cache_lock:
+            cached_embedding = self.description_embedding_cache.get(description)
+        if cached_embedding is not None:
+            return cached_embedding
+
+        computed_embedding = self.model.encode(
+            description,
+            normalize_embeddings=True,
+        )
+        with self.cache_lock:
+            return self.description_embedding_cache.setdefault(
                 description,
-                normalize_embeddings=True,
+                computed_embedding,
             )
-        return self.description_embedding_cache[description]
 
     def _get_profile_embeddings(self, profile_specs):
         cache_key = tuple((spec["id"], spec["text"]) for spec in profile_specs)
-        if cache_key not in self.profile_embedding_cache:
-            self.profile_embedding_cache[cache_key] = self.model.encode(
-                [spec["text"] for spec in profile_specs],
-                normalize_embeddings=True,
+        with self.cache_lock:
+            cached_embeddings = self.profile_embedding_cache.get(cache_key)
+        if cached_embeddings is not None:
+            return cached_embeddings
+
+        computed_embeddings = self.model.encode(
+            [spec["text"] for spec in profile_specs],
+            normalize_embeddings=True,
+        )
+        with self.cache_lock:
+            return self.profile_embedding_cache.setdefault(
+                cache_key,
+                computed_embeddings,
             )
-        return self.profile_embedding_cache[cache_key]
 
     def score_description(self, description, profile_specs):
         description_embedding = self._get_description_embedding(description)
@@ -114,7 +133,9 @@ def get_profile_matcher():
     global _PROFILE_MATCHER
 
     if _PROFILE_MATCHER is None:
-        _PROFILE_MATCHER = ProfileMatcher(EMBEDDING_MODEL_NAME)
+        with _PROFILE_MATCHER_LOCK:
+            if _PROFILE_MATCHER is None:
+                _PROFILE_MATCHER = ProfileMatcher(EMBEDDING_MODEL_NAME)
 
     return _PROFILE_MATCHER
 

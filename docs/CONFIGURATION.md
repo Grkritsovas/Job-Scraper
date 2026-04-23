@@ -138,6 +138,21 @@ Each `config_json` record should look like this:
 7. Drop jobs below `matching.semantic_threshold`.
 8. If Gemini is enabled, run two-pass Gemini screening and reranking.
 
+## Concurrency
+
+- Recipient processing runs concurrently with a built-in cap of `3`.
+- Recipient concurrency is also clamped by the number of enabled profiles, so smaller runs only use the threads they need.
+- The implementation enforces a hard upper bound of `8` recipient workers even if the code cap is raised later.
+- Scraping runs the four source families in parallel:
+  - Ashby
+  - Greenhouse
+  - Lever
+  - Next.js
+- Each source family still runs serially inside its own scraper.
+- Per-job description fetching is unchanged and is not parallelized separately.
+
+This project is intended for a small admin-run setup, roughly up to `8` recipients per run.
+
 ## Target Configuration
 
 Supported target config variables:

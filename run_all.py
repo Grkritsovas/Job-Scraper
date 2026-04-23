@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 
 from config.recipient_profiles import load_recipient_profiles
@@ -14,43 +15,79 @@ from shared.digest import build_digest_payloads
 from sponsorship import enrich_jobs, load_sponsor_company_lookup
 from storage import create_storage
 
+RECIPIENT_CONCURRENCY_CAP = 3
+MAX_RECIPIENT_CONCURRENCY = 8
+SOURCE_FAMILY_CONCURRENCY = 4
+
 
 def sponsor_aware_profiles(recipient_profiles):
     return any(profile.get("use_sponsor_lookup", False) for profile in recipient_profiles)
 
 
 def collect_all_jobs(targets, diagnostics):
+    source_collectors = [
+        (
+            "ashby",
+            lambda: collect_ashby_jobs(
+                set(),
+                targets["ashby"],
+                diagnostics=diagnostics,
+            ),
+        ),
+        (
+            "greenhouse",
+            lambda: collect_greenhouse_jobs(
+                set(),
+                targets["greenhouse"],
+                diagnostics=diagnostics,
+            ),
+        ),
+        (
+            "lever",
+            lambda: collect_lever_jobs(
+                set(),
+                targets["lever"],
+                diagnostics=diagnostics,
+            ),
+        ),
+        (
+            "nextjs",
+            lambda: collect_nextjs_jobs(
+                set(),
+                targets["nextjs"],
+                diagnostics=diagnostics,
+            ),
+        ),
+    ]
+
+    collected_by_source = {}
+    with ThreadPoolExecutor(
+        max_workers=min(SOURCE_FAMILY_CONCURRENCY, len(source_collectors))
+    ) as executor:
+        future_by_source = {
+            executor.submit(collector): source_name
+            for source_name, collector in source_collectors
+        }
+        for future in as_completed(future_by_source):
+            source_name = future_by_source[future]
+            try:
+                collected_by_source[source_name] = future.result()
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Source collection failed for {source_name}: {exc}"
+                ) from exc
+
+    merged_candidates = []
     seen_urls = set()
-    candidates = []
-    candidates.extend(
-        collect_ashby_jobs(
-            seen_urls,
-            targets["ashby"],
-            diagnostics=diagnostics,
-        )
-    )
-    candidates.extend(
-        collect_greenhouse_jobs(
-            seen_urls,
-            targets["greenhouse"],
-            diagnostics=diagnostics,
-        )
-    )
-    candidates.extend(
-        collect_lever_jobs(
-            seen_urls,
-            targets["lever"],
-            diagnostics=diagnostics,
-        )
-    )
-    candidates.extend(
-        collect_nextjs_jobs(
-            seen_urls,
-            targets["nextjs"],
-            diagnostics=diagnostics,
-        )
-    )
-    return candidates
+    for source_name, _collector in source_collectors:
+        for job in collected_by_source.get(source_name, []):
+            job_url = job.get("url")
+            if not job_url or job_url in seen_urls:
+                continue
+            seen_urls.add(job_url)
+            merged_candidates.append(job)
+
+    return merged_candidates
 
 
 def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostics):
@@ -108,6 +145,30 @@ def require_database_in_github_actions():
         )
 
 
+def recipient_worker_count(recipient_profiles):
+    if not recipient_profiles:
+        return 1
+
+    configured = max(1, min(RECIPIENT_CONCURRENCY_CAP, MAX_RECIPIENT_CONCURRENCY))
+    return min(len(recipient_profiles), configured)
+
+
+def process_recipient(recipient_profile, candidates, storage, diagnostics):
+    review_result = select_jobs_for_recipient(
+        candidates,
+        recipient_profile,
+        storage,
+        diagnostics,
+    )
+    jobs_to_send = review_result["jobs_to_send"]
+    reviewed_jobs = review_result["reviewed_jobs"]
+    if jobs_to_send:
+        send_digest(recipient_profile, jobs_to_send)
+    if reviewed_jobs:
+        storage.store_seen_jobs(recipient_profile["id"], reviewed_jobs)
+    return review_result
+
+
 def main():
     require_database_in_github_actions()
 
@@ -129,19 +190,36 @@ def main():
     candidates = collect_all_jobs(targets, diagnostics)
     enriched_candidates = enrich_jobs(candidates, sponsor_company_lookup)
 
-    for recipient_profile in recipient_profiles:
-        review_result = select_jobs_for_recipient(
-            enriched_candidates,
-            recipient_profile,
-            storage,
-            diagnostics,
-        )
-        jobs_to_send = review_result["jobs_to_send"]
-        reviewed_jobs = review_result["reviewed_jobs"]
-        if jobs_to_send:
-            send_digest(recipient_profile, jobs_to_send)
-        if reviewed_jobs:
-            storage.store_seen_jobs(recipient_profile["id"], reviewed_jobs)
+    worker_count = recipient_worker_count(recipient_profiles)
+    if worker_count == 1:
+        for recipient_profile in recipient_profiles:
+            process_recipient(
+                recipient_profile,
+                enriched_candidates,
+                storage,
+                diagnostics,
+            )
+        return
+
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        future_by_recipient_id = {
+            executor.submit(
+                process_recipient,
+                recipient_profile,
+                enriched_candidates,
+                storage,
+                diagnostics,
+            ): recipient_profile["id"]
+            for recipient_profile in recipient_profiles
+        }
+        for future in as_completed(future_by_recipient_id):
+            recipient_id = future_by_recipient_id[future]
+            try:
+                future.result()
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Recipient processing failed for {recipient_id}: {exc}"
+                ) from exc
 
 
 if __name__ == "__main__":

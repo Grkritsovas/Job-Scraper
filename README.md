@@ -16,6 +16,8 @@ Typical setup:
 - configure GitHub Actions secrets and variables
 - let the workflow run on schedule
 
+The intended scale is a small admin-run setup, roughly up to 8 recipients per run.
+
 ## What It Does
 
 - loads public job-board targets from config
