@@ -136,6 +136,9 @@ def normalize_grouped_profile(profile, index=0, sender_email=""):
         },
         "candidate": {
             "summary": _normalize_text(candidate_config.get("summary")),
+            "education_status": _normalize_text(
+                candidate_config.get("education_status")
+            ),
             "target_roles": _canonical_target_roles(candidate_config),
         },
         "job_preferences": {
@@ -166,6 +169,9 @@ def normalize_grouped_profile(profile, index=0, sender_email=""):
         "eligibility": {
             "needs_sponsorship": bool(
                 eligibility_config.get("needs_sponsorship", False)
+            ),
+            "work_authorization_summary": _normalize_text(
+                eligibility_config.get("work_authorization_summary")
             ),
             "check_hard_eligibility": bool(
                 eligibility_config.get("check_hard_eligibility", False)
@@ -248,6 +254,9 @@ def _to_runtime_profile(grouped_profile):
         "semantic_profiles": semantic_profiles,
         "semantic_profile_texts": semantic_profile_texts,
         "cv_summary": _normalize_text(grouped_profile["candidate"].get("summary")),
+        "education_status": _normalize_text(
+            grouped_profile["candidate"].get("education_status")
+        ),
         "min_top_score": float(matching_config["semantic_threshold"]),
         "max_years_experience": _to_optional_int(
             seniority_config.get("max_explicit_years")
@@ -264,6 +273,9 @@ def _to_runtime_profile(grouped_profile):
         ),
         "salary_penalty_max": float(salary_config["penalty_strength"]),
         "care_about_sponsorship": bool(eligibility_config["needs_sponsorship"]),
+        "work_authorization_summary": _normalize_text(
+            eligibility_config.get("work_authorization_summary")
+        ),
         "care_about_hard_eligibility": bool(
             eligibility_config["check_hard_eligibility"]
         ),

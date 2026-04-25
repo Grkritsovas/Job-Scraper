@@ -119,6 +119,7 @@ def _build_result(
     llm_shortlisted_jobs=None,
     gemini_reviewed_jobs=None,
     review_error=None,
+    review_error_stage=None,
 ):
     return {
         "jobs_to_send": jobs_to_send,
@@ -127,6 +128,7 @@ def _build_result(
         "llm_shortlisted_jobs": llm_shortlisted_jobs,
         "gemini_reviewed_jobs": gemini_reviewed_jobs,
         "review_error": review_error,
+        "review_error_stage": review_error_stage,
     }
 
 
@@ -193,6 +195,16 @@ def _build_candidate_context(recipient_profile):
         "target_profiles": profiles,
         "cv_summary": normalize_text_whitespace(recipient_profile.get("cv_summary", "")),
     }
+    education_status = normalize_text_whitespace(
+        recipient_profile.get("education_status", "")
+    )
+    if education_status:
+        context["education_status"] = education_status
+    work_authorization_summary = normalize_text_whitespace(
+        recipient_profile.get("work_authorization_summary", "")
+    )
+    if work_authorization_summary:
+        context["work_authorization_summary"] = work_authorization_summary
     if recipient_profile.get("preferred_salary_max_gbp") is not None:
         context["preferred_salary_max_gbp"] = recipient_profile.get(
             "preferred_salary_max_gbp"
@@ -278,6 +290,13 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "Prefer junior, graduate, grad, and entry-level roles. "
             "Be cautious with manager, lead, senior, and staff roles."
         ),
+        "student_programme_rule": (
+            "Use candidate education_status when screening internships, placements, "
+            "and student programmes. Reject current-student-only roles, roles requiring "
+            "returning to study, and roles requiring a future graduation date unless "
+            "the candidate context directly confirms that eligibility. Graduate/open "
+            "internships can be kept only when the rest of the fit is realistic."
+        ),
         "output_rule": (
             "Return only credible candidates. "
             "For why_apply, write at most 2 short simple sentences."
@@ -288,7 +307,8 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "Reject roles with hard eligibility requirements the candidate is unlikely to meet. "
             "This includes SC clearance, DV clearance, security vetting, nationality or citizenship restrictions, "
             "and explicit continuous UK residency requirements such as 3 years, 5 years, or similar. "
-            "Do not keep these roles unless the candidate context directly confirms eligibility."
+            "Use work_authorization_summary when provided. Do not keep these roles unless "
+            "the candidate context directly confirms eligibility."
         )
     _add_salary_rule(instructions, recipient_profile)
     _add_extra_guidance(
@@ -353,6 +373,13 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "Use the candidate profiles as the main rule. "
             "Jobs with weak evidence, notable mismatches, or stretched reasoning should be dropped."
         ),
+        "student_programme_rule": (
+            "Use candidate education_status when comparing internships, placements, "
+            "and student programmes. Drop current-student-only roles, roles requiring "
+            "returning to study, and roles requiring a future graduation date unless "
+            "the candidate context directly confirms that eligibility. Graduate/open "
+            "internships can remain only when the final fit is otherwise strong."
+        ),
         "output_rule": (
             "Return only the final shortlist as JSON matching the schema. "
             "For why_apply, write at most 2 short simple sentences."
@@ -363,7 +390,8 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "Reject roles with hard eligibility requirements the candidate is unlikely to meet. "
             "This includes SC clearance, DV clearance, security vetting, nationality or citizenship restrictions, "
             "and explicit continuous UK residency requirements such as 3 years, 5 years, or similar. "
-            "Do not keep these roles unless the candidate context directly confirms eligibility."
+            "Use work_authorization_summary when provided. Do not keep these roles unless "
+            "the candidate context directly confirms eligibility."
         )
     _add_salary_rule(instructions, recipient_profile)
     _add_extra_guidance(
@@ -712,6 +740,7 @@ def rerank_jobs_with_gemini(
             llm_shortlisted_jobs=0,
             gemini_reviewed_jobs=0,
             review_error=error_message,
+            review_error_stage="client_setup",
         )
 
     if client is None:
@@ -722,6 +751,7 @@ def rerank_jobs_with_gemini(
             llm_shortlisted_jobs=0,
             gemini_reviewed_jobs=0,
             review_error="Gemini API key is missing.",
+            review_error_stage="client_setup",
         )
 
     try:
@@ -747,6 +777,7 @@ def rerank_jobs_with_gemini(
             llm_shortlisted_jobs=0,
             gemini_reviewed_jobs=0,
             review_error=error_message,
+            review_error_stage="batch_screening",
         )
 
     if not screened_candidates:
@@ -779,6 +810,7 @@ def rerank_jobs_with_gemini(
             llm_shortlisted_jobs=0,
             gemini_reviewed_jobs=0,
             review_error=error_message,
+            review_error_stage="final_rerank",
         )
 
     return _build_result(

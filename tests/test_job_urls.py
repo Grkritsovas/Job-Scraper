@@ -143,6 +143,23 @@ class JobUrlTests(unittest.TestCase):
         )
         self.assertEqual("", normalize_seed_url("javascript:alert('xss')"))
 
+    def test_rejects_private_and_local_seed_urls(self):
+        self.assertEqual("", normalize_seed_url("http://localhost/jobs"))
+        self.assertEqual("", normalize_seed_url("http://127.0.0.1/jobs"))
+        self.assertEqual("", normalize_seed_url("http://10.0.0.5/jobs"))
+        self.assertEqual("", normalize_seed_url("http://172.16.4.2/jobs"))
+        self.assertEqual("", normalize_seed_url("http://192.168.1.10/jobs"))
+        self.assertEqual("", normalize_seed_url("http://169.254.169.254/latest"))
+        self.assertEqual("", normalize_seed_url("http://[::1]/jobs"))
+
+    def test_rejects_private_greenhouse_company_hosted_job_link(self):
+        cleaned = sanitize_job_url(
+            "http://127.0.0.1/jobs?gh_jid=7532733",
+            source="greenhouse",
+        )
+
+        self.assertEqual("", cleaned)
+
 
 if __name__ == "__main__":
     unittest.main()

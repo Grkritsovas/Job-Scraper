@@ -58,6 +58,7 @@ Each `config_json` record should look like this:
   },
   "candidate": {
     "summary": "Short factual candidate summary.",
+    "education_status": "Graduated Oct 2025; not a current student.",
     "target_roles": [
       {"id": "swe"},
       {"id": "data_science", "match_text": "Custom profile text"}
@@ -77,6 +78,7 @@ Each `config_json` record should look like this:
   },
   "eligibility": {
     "needs_sponsorship": false,
+    "work_authorization_summary": "Compact UK work authorization context for Gemini.",
     "check_hard_eligibility": false,
     "use_sponsor_lookup": false
   },
@@ -98,6 +100,8 @@ Each `config_json` record should look like this:
   Overrides the built-in semantic profile text for that role.
 - `candidate.summary`
   Gives Gemini compact candidate context.
+- `candidate.education_status`
+  Gives Gemini explicit graduate/student status. This is used for internships, placements, and student-programme judgment.
 - `job_preferences.target_seniority.max_explicit_years`
   Controls the regex-based experience filter.
 - `job_preferences.target_seniority.boost_multiplier`
@@ -112,6 +116,8 @@ Each `config_json` record should look like this:
   Maximum salary penalty subtracted from ranking score.
 - `eligibility.needs_sponsorship`
   Enables sponsorship-aware output and interpretation.
+- `eligibility.work_authorization_summary`
+  Gives Gemini compact UK work authorization context, such as visa status, settled/pre-settled status, citizenship, or residency facts.
 - `eligibility.check_hard_eligibility`
   Adds stricter Gemini judgment for SC/DV clearance, nationality restrictions, and explicit UK residency requirements.
 - `eligibility.use_sponsor_lookup`
@@ -128,7 +134,7 @@ Each `config_json` record should look like this:
 1. Scrape jobs from the configured sources.
 2. Drop jobs already seen for that recipient.
 3. Apply hard filters:
-   - title seniority/commercial/eligibility terms
+   - title seniority/commercial/eligibility terms, with recipient-aware exceptions for explicitly targeted role families such as marketing
    - location
    - authorization/eligibility mismatch
    - explicit experience requirement above `max_explicit_years`
@@ -137,6 +143,47 @@ Each `config_json` record should look like this:
 6. Apply the optional salary penalty.
 7. Drop jobs below `matching.semantic_threshold`.
 8. If Gemini is enabled, run two-pass Gemini screening and reranking.
+
+Recipient diagnostic lines include the review mode and counts. When Gemini fails,
+the line also includes `review_error_stage` and a compact `review_error` value so
+workflow logs show whether the failure happened during client setup, batch
+screening, or final reranking.
+
+The run also prints a final `[run_summary]` line with candidate counts, recipient
+outcomes, jobs sent, reviewed jobs, source failures, and Gemini failure stages.
+If one source family fails, the run continues with jobs from the successful
+source families and records a `[scrape_failure:<source>]` diagnostic line. If
+all source families fail, the run stops instead of sending an empty-looking
+result.
+
+## Replay Debugging
+
+Save a replay snapshot during a normal run with:
+
+```powershell
+python run_all.py --save-run runs/latest.json
+```
+
+The snapshot includes scraped jobs, enriched jobs, runtime recipient profiles,
+recipient outcomes, and diagnostics. Treat it as local debugging data because it
+can include job descriptions and candidate summaries. The default `runs/`
+directory is ignored by Git.
+
+Replay ranking and review without scraping, sending email, or marking jobs seen:
+
+```powershell
+python tools/replay_run.py runs/latest.json --recipient george
+```
+
+By default replay uses recipient profiles saved in the snapshot. To tune the
+current database profile against the same saved job set, use:
+
+```powershell
+python tools/replay_run.py runs/latest.json --profiles current-db --recipient george
+```
+
+Use `--semantic-only` to temporarily disable Gemini for the replay process, and
+`--preview-dir runs/previews` to write local digest HTML/text previews.
 
 ## Concurrency
 
@@ -195,3 +242,13 @@ select recipient_id, email, enabled
 from app_config.recipient_profiles
 order by recipient_id;
 ```
+
+Validate stored profiles before a run with:
+
+```powershell
+python tools/validate_recipient_profiles.py
+```
+
+Use `--enabled-only` to check only enabled profiles. The validator loads profile
+JSON from the configured database and runs the same normalization path used by
+the scraper.

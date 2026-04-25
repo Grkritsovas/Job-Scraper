@@ -1,6 +1,12 @@
 import unittest
 
-from semantic_matching import build_profile_specs, get_hard_filter_reason, rank_jobs
+from semantic_matching import (
+    build_profile_specs,
+    extract_required_experience_years,
+    extract_salary_upper_bound_gbp,
+    get_hard_filter_reason,
+    rank_jobs,
+)
 
 
 class FakeMatcher:
@@ -73,6 +79,26 @@ class SemanticMatchingTests(unittest.TestCase):
         )
         self.assertEqual("title_commercial", reason)
 
+    def test_commercial_title_matching_uses_whole_terms(self):
+        reason = get_hard_filter_reason(
+            make_job(title="Salesforce Developer", description="strong_fit")
+        )
+        self.assertIsNone(reason)
+
+    def test_marketing_title_is_rejected_without_marketing_target(self):
+        reason = get_hard_filter_reason(
+            make_job(title="Marketing Assistant", description="strong_fit"),
+            recipient_profile={"semantic_profiles": ["swe", "data_science"]},
+        )
+        self.assertEqual("title_commercial", reason)
+
+    def test_marketing_title_is_allowed_for_marketing_target(self):
+        reason = get_hard_filter_reason(
+            make_job(title="Marketing Assistant", description="strong_fit"),
+            recipient_profile={"semantic_profiles": ["marketing_assistant"]},
+        )
+        self.assertIsNone(reason)
+
     def test_get_hard_filter_reason_rejects_two_plus_years_for_junior_pipeline(self):
         reason = get_hard_filter_reason(
             make_job(description="Requires 2+ years of experience in Python."),
@@ -89,6 +115,40 @@ class SemanticMatchingTests(unittest.TestCase):
             ),
         )
         self.assertEqual("experience", reason)
+
+    def test_experience_range_uses_upper_bound(self):
+        years = extract_required_experience_years(
+            "Requires 1\u20133 years of professional software engineering experience."
+        )
+
+        self.assertTrue(years)
+        self.assertTrue(all(year == 3 for year in years))
+
+    def test_internship_title_can_pass_when_student_requirement_absent(self):
+        reason = get_hard_filter_reason(
+            make_job(title="Software Engineering Internship", description="strong_fit")
+        )
+        self.assertIsNone(reason)
+
+    def test_internship_rejects_current_student_requirement(self):
+        reason = get_hard_filter_reason(
+            make_job(
+                title="Software Engineering Internship",
+                description="Applicants must be currently enrolled in a degree.",
+            )
+        )
+        self.assertEqual("eligibility", reason)
+
+    def test_graduating_between_range_is_not_hard_rejected(self):
+        reason = get_hard_filter_reason(
+            make_job(
+                title="Graduate Software Engineer",
+                description=(
+                    "Open to graduates and people graduating between 2024 and 2026."
+                ),
+            )
+        )
+        self.assertIsNone(reason)
 
     def test_recipient_specific_max_years_experience_relaxes_hard_filter(self):
         jobs = [
@@ -237,6 +297,13 @@ class SemanticMatchingTests(unittest.TestCase):
 
         ranked_jobs = rank_jobs(jobs, recipient_profile, matcher=FakeMatcher())
         self.assertEqual([], ranked_jobs)
+
+    def test_salary_parser_handles_real_pound_and_en_dash(self):
+        upper_bound = extract_salary_upper_bound_gbp(
+            "Salary range: \u00a351,000 \u2013 \u00a380,000 plus benefits."
+        )
+
+        self.assertEqual(80000.0, upper_bound)
 
     def test_salary_penalty_does_not_apply_when_not_configured(self):
         jobs = [

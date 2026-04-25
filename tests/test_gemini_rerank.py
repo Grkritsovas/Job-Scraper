@@ -124,6 +124,8 @@ class GeminiRerankTests(unittest.TestCase):
             "semantic_profiles": ["swe", "data_science"],
             "semantic_profile_texts": {},
             "cv_summary": "Strong Python, ML, and data project experience.",
+            "education_status": "Graduated Oct 2025; not a current student.",
+            "work_authorization_summary": "Graduate visa valid until Feb 2028.",
             "preferred_salary_max_gbp": 85000.0,
             "salary_hard_cap_gbp": 95000.0,
             "extra_screening_guidance": [
@@ -196,6 +198,8 @@ class GeminiRerankTests(unittest.TestCase):
         first_prompt = client.models.calls[0]["contents"]
         second_prompt = client.models.calls[1]["contents"]
         self.assertIn("Strong Python, ML, and data project experience.", first_prompt)
+        self.assertIn("Graduated Oct 2025; not a current student.", first_prompt)
+        self.assertIn("Graduate visa valid until Feb 2028.", first_prompt)
         self.assertIn('"label": "SWE"', first_prompt)
         self.assertIn('"label": "Data Science"', first_prompt)
         self.assertIn('"url": "https://example.com/job-2"', first_prompt)
@@ -206,7 +210,11 @@ class GeminiRerankTests(unittest.TestCase):
             "Prefer roles explicitly framed as junior or early-career opportunities.",
             first_prompt,
         )
+        self.assertIn('"student_programme_rule"', first_prompt)
+        self.assertIn("current-student-only roles", first_prompt)
         self.assertIn('"matched_profile": "Data Science"', second_prompt)
+        self.assertIn("Graduated Oct 2025; not a current student.", second_prompt)
+        self.assertIn("Graduate visa valid until Feb 2028.", second_prompt)
         self.assertIn('"supporting_evidence": [', second_prompt)
         self.assertIn('"batch_fit_score": 84', second_prompt)
         self.assertIn('"salary_upper_bound_gbp": 100000.0', second_prompt)
@@ -214,6 +222,7 @@ class GeminiRerankTests(unittest.TestCase):
             "Prefer realistic employability over prestige or thematic overlap.",
             second_prompt,
         )
+        self.assertIn('"student_programme_rule"', second_prompt)
 
     def test_rerank_uses_top_n_and_splits_batches(self):
         jobs = [make_job(index) for index in range(1, 13)]
@@ -304,7 +313,44 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertEqual([], result["reviewed_jobs"])
         self.assertEqual(0, result["llm_shortlisted_jobs"])
         self.assertEqual(0, result["gemini_reviewed_jobs"])
+        self.assertEqual("final_rerank", result["review_error_stage"])
         self.assertIn("final pass failed", result["review_error"])
+
+    def test_rerank_records_batch_screening_failure_stage(self):
+        jobs = [make_job(1)]
+        recipient_profile = {
+            "semantic_profiles": ["swe"],
+            "semantic_profile_texts": {},
+            "cv_summary": "",
+        }
+
+        class BatchFailingModels(FakeModels):
+            def generate_content(self, model, contents, config):
+                raise RuntimeError("503 UNAVAILABLE")
+
+        class BatchFailingClient:
+            def __init__(self):
+                self.models = BatchFailingModels([])
+
+        with patch.dict(
+            os.environ,
+            {
+                "GEMINI_API_KEY": "test-key",
+                "JOB_SCRAPER_LLM_RETRY_ATTEMPTS": "1",
+            },
+            clear=True,
+        ):
+            result = rerank_jobs_with_gemini(
+                jobs,
+                recipient_profile,
+                client=BatchFailingClient(),
+                top_n=1,
+                batch_size=10,
+            )
+
+        self.assertEqual("gemini_failed", result["review_mode"])
+        self.assertEqual("batch_screening", result["review_error_stage"])
+        self.assertIn("503 UNAVAILABLE", result["review_error"])
 
     def test_rerank_retries_retryable_batch_failure_and_recovers(self):
         jobs = [make_job(1)]
@@ -588,6 +634,8 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertIn('"eligibility_rule"', true_second_prompt)
         self.assertIn("SC clearance", true_first_prompt)
         self.assertIn("SC clearance", true_second_prompt)
+        self.assertIn("Use work_authorization_summary", true_first_prompt)
+        self.assertIn("Use work_authorization_summary", true_second_prompt)
 
 
 if __name__ == "__main__":

@@ -22,10 +22,11 @@ HARD_COMMERCIAL_TERMS = [
     "legal counsel",
 ]
 
-HARD_ELIGIBILITY_TITLE_TERMS = [
-    "intern",
-    "internship",
-]
+RECIPIENT_AWARE_COMMERCIAL_TERMS = {
+    "marketing",
+}
+
+HARD_ELIGIBILITY_TITLE_TERMS = []
 
 AUTHORIZATION_MISMATCH_PATTERNS = [
     r"authorized to work in (?:the )?(?:us|usa|united states)\b",
@@ -39,7 +40,12 @@ AUTHORIZATION_MISMATCH_PATTERNS = [
 ELIGIBILITY_REJECT_PATTERNS = [
     r"\bmust be planning on graduating in \d{4}\b",
     r"\bthis should be your final internship before graduating\b",
-    r"\bmust be enrolled in\b",
+    r"\bmust be (?:currently )?enrolled\b",
+    r"\bcurrently enrolled\b",
+    r"\benrolled in (?:a |an |your )?(?:degree|university|college|school|course|program|programme)\b",
+    r"\bpursuing (?:a |an |your )?(?:degree|bachelor|bachelors|master|masters|phd)\b",
+    r"\breturning to (?:a |an |your )?(?:degree|university|college|school|course|program|programme)\b",
+    r"\breturn to (?:a |an |your )?(?:degree|university|college|school|course|program|programme)\b",
     r"\bstudents only\b",
     r"\bcurrent student\b",
 ]

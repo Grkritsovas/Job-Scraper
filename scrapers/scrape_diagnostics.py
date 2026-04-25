@@ -1,11 +1,33 @@
 import threading
 
 
+def _format_log_value(value, max_length=180):
+    if value is None:
+        return ""
+
+    cleaned = " ".join(str(value).split())
+    if len(cleaned) > max_length:
+        cleaned = cleaned[: max_length - 3].rstrip() + "..."
+    return cleaned.replace('"', "'")
+
+
+def _format_count_map(values):
+    return ",".join(
+        f"{key}:{count}"
+        for key, count in sorted(
+            (values or {}).items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+    ) or "-"
+
+
 class ScrapeDiagnostics:
     def __init__(self, enabled=True):
         self.enabled = enabled
         self.target_summaries = []
+        self.source_failures = []
         self.recipient_summaries = []
+        self.run_summaries = []
         self.description_fallbacks = []
         self.url_rejections = []
         self._lock = threading.Lock()
@@ -32,19 +54,28 @@ class ScrapeDiagnostics:
                 f"sample={sample_title}"
             )
 
+    def record_source_failure(self, source, error):
+        if not self.enabled:
+            return
+
+        payload = {
+            "source": source,
+            "error": _format_log_value(error),
+        }
+        with self._lock:
+            self.source_failures.append(payload)
+            print(
+                f"[scrape_failure:{source}] "
+                f'error="{payload["error"]}"'
+            )
+
     def record_recipient_summary(self, recipient_id, summary):
         if not self.enabled:
             return
 
         payload = {"recipient_id": recipient_id, **summary}
         hard_filter_reasons = payload.get("hard_filter_reasons") or {}
-        formatted_reasons = ",".join(
-            f"{reason}:{count}"
-            for reason, count in sorted(
-                hard_filter_reasons.items(),
-                key=lambda item: (-item[1], item[0]),
-            )
-        ) or "-"
+        formatted_reasons = _format_count_map(hard_filter_reasons)
         review_mode = payload.get("review_mode") or "-"
         reviewed_jobs = payload.get("reviewed_jobs")
         reviewed_suffix = (
@@ -66,8 +97,14 @@ class ScrapeDiagnostics:
         )
         review_error = payload.get("review_error")
         review_error_suffix = (
-            " review_error=1"
+            f' review_error="{_format_log_value(review_error)}"'
             if review_error
+            else ""
+        )
+        review_error_stage = payload.get("review_error_stage")
+        review_error_stage_suffix = (
+            f" review_error_stage={_format_log_value(review_error_stage)}"
+            if review_error_stage
             else ""
         )
         with self._lock:
@@ -84,6 +121,7 @@ class ScrapeDiagnostics:
                 f"{reviewed_suffix}"
                 f"{llm_suffix}"
                 f"{gemini_reviewed_suffix}"
+                f"{review_error_stage_suffix}"
                 f"{review_error_suffix} "
                 f"recipient_seen={payload.get('recipient_seen_urls', 0)} "
                 f"hard_filter_reasons={formatted_reasons}"
@@ -142,4 +180,35 @@ class ScrapeDiagnostics:
                 f"[url_reject:{source}:{target}] "
                 f"title={title or '-'} "
                 f"raw={raw_url or '-'}"
+            )
+
+    def record_run_summary(self, summary):
+        if not self.enabled:
+            return
+
+        source_failure_sources = ",".join(
+            sorted(failure["source"] for failure in self.source_failures)
+        ) or "-"
+        review_modes = _format_count_map(summary.get("review_modes"))
+        gemini_failure_stages = _format_count_map(
+            summary.get("gemini_failure_stages")
+        )
+        with self._lock:
+            self.run_summaries.append(
+                {
+                    **summary,
+                    "source_failures": list(self.source_failures),
+                }
+            )
+            print(
+                "[run_summary] "
+                f"candidate_jobs={summary.get('candidate_jobs', 0)} "
+                f"enriched_jobs={summary.get('enriched_jobs', 0)} "
+                f"recipients={summary.get('recipient_count', 0)} "
+                f"jobs_sent={summary.get('jobs_sent', 0)} "
+                f"reviewed_jobs={summary.get('reviewed_jobs', 0)} "
+                f"source_failures={len(self.source_failures)} "
+                f"failed_sources={source_failure_sources} "
+                f"review_modes={review_modes} "
+                f"gemini_failure_stages={gemini_failure_stages}"
             )

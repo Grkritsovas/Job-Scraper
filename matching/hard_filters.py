@@ -6,6 +6,7 @@ from matching.filters import (
     HARD_COMMERCIAL_TERMS,
     HARD_ELIGIBILITY_TITLE_TERMS,
     HARD_SENIORITY_TERMS,
+    RECIPIENT_AWARE_COMMERCIAL_TERMS,
 )
 from shared.locations import is_uk_location
 
@@ -21,7 +22,7 @@ EXPERIENCE_PATTERNS = [
     ),
     re.compile(r"\bminimum\s+(\d+)\s*(?:years?|yrs?|yoe)\b", flags=re.IGNORECASE),
     re.compile(
-        r"\b(\d+)\s*[-–—]\s*(\d+)\s*(?:years?|yrs?|yoe)\b",
+        r"\b(\d+)\s*[-\u2013\u2014]\s*(\d+)\s*(?:years?|yrs?|yoe)\b",
         flags=re.IGNORECASE,
     ),
     re.compile(
@@ -33,7 +34,7 @@ EXPERIENCE_PATTERNS = [
         flags=re.IGNORECASE,
     ),
     re.compile(
-        r"\b(\d+)\s*[-–—]\s*(\d+)\s*(?:years?|yrs?|yoe)\s+"
+        r"\b(\d+)\s*[-\u2013\u2014]\s*(\d+)\s*(?:years?|yrs?|yoe)\s+"
         r"(?:of\s+)?(?:[a-z]+\s+){0,6}experience\b",
         flags=re.IGNORECASE,
     ),
@@ -45,9 +46,68 @@ EXPERIENCE_PATTERNS = [
 ]
 
 
+def _term_pattern(term):
+    escaped = re.escape(term.strip().lower())
+    escaped = escaped.replace(r"\ ", r"[\s-]+")
+    escaped = escaped.replace(r"\-", r"[\s-]+")
+    return re.compile(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", flags=re.IGNORECASE)
+
+
 def title_has_hard_reject_term(title, reject_terms):
     normalized_title = (title or "").lower()
-    return any(term in normalized_title for term in reject_terms)
+    return any(
+        _term_pattern(term).search(normalized_title)
+        for term in reject_terms
+        if str(term).strip()
+    )
+
+
+def _profile_id_like(value):
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").lower()).strip("_")
+
+
+def _recipient_target_role_ids(recipient_profile):
+    if not recipient_profile:
+        return []
+
+    role_ids = [
+        _profile_id_like(profile_id)
+        for profile_id in recipient_profile.get("semantic_profiles", [])
+    ]
+
+    candidate_config = recipient_profile.get("candidate") or {}
+    for role in candidate_config.get("target_roles") or []:
+        if isinstance(role, str):
+            role_ids.append(_profile_id_like(role))
+            continue
+        if isinstance(role, dict):
+            role_ids.append(
+                _profile_id_like(
+                    role.get("id") or role.get("profile_id") or role.get("name")
+                )
+            )
+
+    return [role_id for role_id in role_ids if role_id]
+
+
+def _recipient_targets_term(recipient_profile, term):
+    term_id = _profile_id_like(term)
+    return any(
+        term_id in role_id
+        for role_id in _recipient_target_role_ids(recipient_profile)
+    )
+
+
+def get_commercial_reject_terms(recipient_profile=None):
+    if not recipient_profile:
+        return list(HARD_COMMERCIAL_TERMS)
+
+    return [
+        term
+        for term in HARD_COMMERCIAL_TERMS
+        if term not in RECIPIENT_AWARE_COMMERCIAL_TERMS
+        or not _recipient_targets_term(recipient_profile, term)
+    ]
 
 
 def has_authorization_mismatch(description):
@@ -76,7 +136,7 @@ def extract_required_experience_years(description):
             groups = [group for group in match.groups() if group]
             if not groups:
                 continue
-            required_years.append(int(groups[0]))
+            required_years.append(max(int(group) for group in groups))
 
     return required_years
 
@@ -100,6 +160,7 @@ def passes_experience_filter(
 def get_hard_filter_reason(
     job,
     max_years_experience=DEFAULT_MAX_YEARS_EXPERIENCE,
+    recipient_profile=None,
 ):
     title = job.get("title", "")
     description = job.get("description", "")
@@ -108,7 +169,10 @@ def get_hard_filter_reason(
     if title_has_hard_reject_term(title, HARD_SENIORITY_TERMS):
         return "title_seniority"
 
-    if title_has_hard_reject_term(title, HARD_COMMERCIAL_TERMS):
+    if title_has_hard_reject_term(
+        title,
+        get_commercial_reject_terms(recipient_profile),
+    ):
         return "title_commercial"
 
     if title_has_hard_reject_term(title, HARD_ELIGIBILITY_TITLE_TERMS):
@@ -129,5 +193,13 @@ def get_hard_filter_reason(
     return None
 
 
-def passes_hard_filters(job, max_years_experience=DEFAULT_MAX_YEARS_EXPERIENCE):
-    return get_hard_filter_reason(job, max_years_experience) is None
+def passes_hard_filters(
+    job,
+    max_years_experience=DEFAULT_MAX_YEARS_EXPERIENCE,
+    recipient_profile=None,
+):
+    return get_hard_filter_reason(
+        job,
+        max_years_experience,
+        recipient_profile=recipient_profile,
+    ) is None

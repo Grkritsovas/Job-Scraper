@@ -81,6 +81,108 @@ UK_LOCATION_TERMS = {
     "york",
 }
 
+BAD_LOCATION_KEYWORDS = [
+    "hop",
+    "warehouse",
+    "trading estate",
+    "rider",
+    "delivery",
+    "store",
+    "kitchen",
+    "site",
+]
+
+COUNTRY_LEVEL_UK_PATTERNS = [
+    r"\buk\b",
+    r"united kingdom",
+    r"\bgb\b",
+    r"remote\s*\(uk\)",
+    r"\bengland\b",
+    r"\bscotland\b",
+]
+
+FOREIGN_LOCATION_KEYWORDS = [
+    "united states",
+    "usa",
+    "canada",
+    "australia",
+    "ukraine",
+    "brazil",
+    "mexico",
+    "new york",
+    "serbia",
+    "germany",
+    "romania",
+    "cyprus",
+    "switzerland",
+    "portugal",
+    "lithuania",
+    "czech republic",
+    "poland",
+    "spain",
+    "france",
+    "italy",
+    "ireland",
+    "belgrade",
+    "berlin",
+    "sydney",
+    "new south wales",
+]
+
+US_STATE_CODES = {
+    "ak",
+    "al",
+    "ar",
+    "az",
+    "ca",
+    "co",
+    "ct",
+    "dc",
+    "de",
+    "fl",
+    "ga",
+    "hi",
+    "ia",
+    "id",
+    "il",
+    "in",
+    "ks",
+    "ky",
+    "la",
+    "ma",
+    "md",
+    "me",
+    "mi",
+    "mn",
+    "mo",
+    "ms",
+    "mt",
+    "nc",
+    "nd",
+    "ne",
+    "nh",
+    "nj",
+    "nm",
+    "nv",
+    "ny",
+    "oh",
+    "ok",
+    "or",
+    "pa",
+    "ri",
+    "sc",
+    "sd",
+    "tn",
+    "tx",
+    "ut",
+    "va",
+    "vt",
+    "wa",
+    "wi",
+    "wv",
+    "wy",
+}
+
 
 def _contains_location_term(location_text, location_term):
     pattern = (
@@ -91,57 +193,30 @@ def _contains_location_term(location_text, location_term):
     return re.search(pattern, location_text) is not None
 
 
-def is_uk_location(locations):
+def _decision(accepted, reason, location="", matched_term=""):
+    return {
+        "accepted": accepted,
+        "reason": reason,
+        "location": location,
+        "matched_term": matched_term,
+    }
+
+
+def _contains_us_state_code(location_text):
+    state_pattern = "|".join(sorted(US_STATE_CODES))
+    return bool(
+        re.search(
+            rf"(?:^|[,\s(/-])(?:{state_pattern})(?:$|[,\s)/-])",
+            location_text,
+        )
+    )
+
+
+def get_uk_location_decision(locations):
     if isinstance(locations, str):
         locations = [locations]
 
-    bad_keywords = [
-        "hop",
-        "warehouse",
-        "trading estate",
-        "rider",
-        "delivery",
-        "store",
-        "kitchen",
-        "site",
-    ]
-
-    country_level_uk_patterns = [
-        r"\buk\b",
-        r"united kingdom",
-        r"\bgb\b",
-        r"remote\s*\(uk\)",
-        r"\bengland\b",
-        r"\bscotland\b",
-    ]
-
-    foreign_keywords = [
-        "united states",
-        "usa",
-        "canada",
-        "australia",
-        "ukraine",
-        "brazil",
-        "mexico",
-        "new york",
-        "serbia",
-        "germany",
-        "romania",
-        "cyprus",
-        "switzerland",
-        "portugal",
-        "lithuania",
-        "czech republic",
-        "poland",
-        "spain",
-        "france",
-        "italy",
-        "ireland",
-        "belgrade",
-        "berlin",
-        "sydney",
-        "new south wales",
-    ]
+    fallback_rejection = _decision(False, "no_match")
 
     for location in locations:
         if not location:
@@ -149,22 +224,72 @@ def is_uk_location(locations):
 
         normalized = location.lower()
 
-        if any(keyword in normalized for keyword in bad_keywords):
+        bad_keyword = next(
+            (keyword for keyword in BAD_LOCATION_KEYWORDS if keyword in normalized),
+            "",
+        )
+        if bad_keyword:
+            fallback_rejection = _decision(
+                False,
+                "bad_keyword",
+                location,
+                bad_keyword,
+            )
             continue
 
-        if any(re.search(pattern, normalized) for pattern in country_level_uk_patterns):
-            return True
+        country_pattern = next(
+            (
+                pattern
+                for pattern in COUNTRY_LEVEL_UK_PATTERNS
+                if re.search(pattern, normalized)
+            ),
+            "",
+        )
+        if country_pattern:
+            return _decision(True, "country_level_uk", location, country_pattern)
 
-        if any(keyword in normalized for keyword in foreign_keywords):
+        foreign_keyword = next(
+            (
+                keyword
+                for keyword in FOREIGN_LOCATION_KEYWORDS
+                if keyword in normalized
+            ),
+            "",
+        )
+        if foreign_keyword:
+            fallback_rejection = _decision(
+                False,
+                "foreign_keyword",
+                location,
+                foreign_keyword,
+            )
             continue
 
-        if any(
-            _contains_location_term(normalized, location_term)
-            for location_term in UK_LOCATION_TERMS
-        ):
-            return True
+        if _contains_us_state_code(normalized):
+            fallback_rejection = _decision(
+                False,
+                "foreign_region",
+                location,
+                "us_state_code",
+            )
+            continue
 
-    return False
+        for location_term in sorted(UK_LOCATION_TERMS):
+            if _contains_location_term(normalized, location_term):
+                return _decision(
+                    True,
+                    "uk_location_term",
+                    location,
+                    location_term,
+                )
+
+        fallback_rejection = _decision(False, "no_match", location)
+
+    return fallback_rejection
+
+
+def is_uk_location(locations):
+    return get_uk_location_decision(locations)["accepted"]
 
 
 def dedupe_keep_order(values):

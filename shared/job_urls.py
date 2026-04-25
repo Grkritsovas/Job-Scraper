@@ -1,3 +1,4 @@
+import ipaddress
 import re
 from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -14,6 +15,10 @@ TRACKING_PARAM_NAMES = {
     "wbraid",
 }
 TRACKING_PARAM_PREFIXES = ("utm_",)
+LOCAL_HOSTNAMES = {
+    "localhost",
+    "localhost.localdomain",
+}
 
 KNOWN_PLATFORM_HOSTS = {
     "ashby": {"jobs.ashbyhq.com"},
@@ -113,11 +118,35 @@ def _normalize_host(parsed_url):
     if not host:
         return ""
 
+    if _is_private_or_local_host(host):
+        return ""
+
     port = parsed_url.port
     if port and port not in {80, 443}:
         return ""
 
     return host
+
+
+def _is_private_or_local_host(host):
+    if host in LOCAL_HOSTNAMES or host.endswith(".localhost"):
+        return True
+
+    try:
+        ip_address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+
+    return any(
+        (
+            ip_address.is_loopback,
+            ip_address.is_private,
+            ip_address.is_link_local,
+            ip_address.is_multicast,
+            ip_address.is_reserved,
+            ip_address.is_unspecified,
+        )
+    )
 
 
 def _strip_tracking_params(query_string):

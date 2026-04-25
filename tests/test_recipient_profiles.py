@@ -29,6 +29,7 @@ class RecipientProfilesTests(unittest.TestCase):
                 "delivery": {"email": "george@example.com"},
                 "candidate": {
                     "summary": "Strong Python and ML project experience for junior roles.",
+                    "education_status": "Graduated Oct 2025; not a current student.",
                     "target_roles": [
                         {"id": "swe"},
                         {
@@ -51,6 +52,7 @@ class RecipientProfilesTests(unittest.TestCase):
                 },
                 "eligibility": {
                     "needs_sponsorship": True,
+                    "work_authorization_summary": "Graduate visa valid until Feb 2028.",
                     "check_hard_eligibility": True,
                     "use_sponsor_lookup": True,
                 },
@@ -73,6 +75,14 @@ class RecipientProfilesTests(unittest.TestCase):
         self.assertEqual("george", rows[0]["recipient_id"])
         self.assertEqual("george@example.com", rows[0]["email"])
         self.assertEqual(2, rows[0]["config"]["job_preferences"]["target_seniority"]["max_explicit_years"])
+        self.assertEqual(
+            "Graduated Oct 2025; not a current student.",
+            rows[0]["config"]["candidate"]["education_status"],
+        )
+        self.assertEqual(
+            "Graduate visa valid until Feb 2028.",
+            rows[0]["config"]["eligibility"]["work_authorization_summary"],
+        )
 
     def test_loads_profiles_from_storage(self):
         db_path = self.test_dir / "profiles.db"
@@ -87,6 +97,7 @@ class RecipientProfilesTests(unittest.TestCase):
                         "delivery": {"email": "george@example.com"},
                         "candidate": {
                             "summary": "Strong Python and ML project experience.",
+                            "education_status": "Graduated Oct 2025; not a current student.",
                             "target_roles": [{"id": "swe"}],
                         },
                         "job_preferences": {
@@ -103,6 +114,9 @@ class RecipientProfilesTests(unittest.TestCase):
                         },
                         "eligibility": {
                             "needs_sponsorship": False,
+                            "work_authorization_summary": (
+                                "Greek citizen with pre-settled status."
+                            ),
                             "check_hard_eligibility": True,
                             "use_sponsor_lookup": True,
                         },
@@ -170,6 +184,14 @@ class RecipientProfilesTests(unittest.TestCase):
         self.assertEqual("george@example.com", profiles[0]["email"])
         self.assertEqual(["swe"], profiles[0]["semantic_profiles"])
         self.assertEqual(2, profiles[0]["max_years_experience"])
+        self.assertEqual(
+            "Graduated Oct 2025; not a current student.",
+            profiles[0]["education_status"],
+        )
+        self.assertEqual(
+            "Greek citizen with pre-settled status.",
+            profiles[0]["work_authorization_summary"],
+        )
         self.assertEqual(["Prefer early-career roles."], profiles[0]["extra_screening_guidance"])
         self.assertEqual(["Prefer clearer evidence."], profiles[0]["extra_final_ranking_guidance"])
 

@@ -30,12 +30,14 @@ DEFAULT_JUNIOR_BOOST_TERMS = (
 
 SALARY_RANGE_PATTERNS = [
     re.compile(
-        r"(?:£|gbp\s*)\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k)?"
-        r"\s*(?:-|to|–|—)\s*(?:£|gbp\s*)?\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k)?",
+        r"(?:\u00a3|gbp\s*)\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k)?"
+        r"\s*(?:-|to|\u2013|\u2014)\s*(?:\u00a3|gbp\s*)?\s*"
+        r"(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k)?",
         flags=re.IGNORECASE,
     ),
     re.compile(
-        r"(?:salary|compensation|pay)\D{0,20}(?:£|gbp\s*)\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k)?",
+        r"(?:salary|compensation|pay)\D{0,20}(?:\u00a3|gbp\s*)\s*"
+        r"(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k)?",
         flags=re.IGNORECASE,
     ),
 ]
@@ -313,6 +315,7 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
                 "max_years_experience",
                 DEFAULT_MAX_YEARS_EXPERIENCE,
             ),
+            recipient_profile=recipient_profile,
         )
         if hard_filter_reason is not None:
             stats["hard_filtered_jobs"] += 1

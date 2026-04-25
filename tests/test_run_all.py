@@ -1,13 +1,19 @@
+import json
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
 from run_all import (
     MAX_RECIPIENT_CONCURRENCY,
     RECIPIENT_CONCURRENCY_CAP,
+    RUN_SNAPSHOT_SCHEMA_VERSION,
+    build_run_summary,
+    build_run_snapshot,
     collect_all_jobs,
     process_recipient,
     recipient_worker_count,
     select_jobs_for_recipient,
+    write_run_snapshot,
 )
 
 
@@ -38,12 +44,27 @@ class FakeStorage:
 class FakeDiagnostics:
     def __init__(self):
         self.calls = []
+        self.source_failures = []
+        self.recipient_summaries = []
 
     def record_recipient_summary(self, recipient_id, summary):
         self.calls.append((recipient_id, summary))
+        self.recipient_summaries.append({"recipient_id": recipient_id, **summary})
+
+    def record_source_failure(self, source, error):
+        self.source_failures.append((source, str(error)))
 
 
 class RunAllTests(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = Path("tests/.tmp_run_all")
+        self.test_dir.mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self):
+        for child in self.test_dir.glob("*"):
+            child.unlink()
+        self.test_dir.rmdir()
+
     def test_collect_all_jobs_dedupes_urls_after_parallel_source_collection(self):
         shared_job = make_job(1)
         ashby_job = {**make_job(2), "source": "ashby", "target_value": "ashby"}
@@ -56,9 +77,18 @@ class RunAllTests(unittest.TestCase):
         }
 
         with (
-            patch("run_all.collect_ashby_jobs", return_value=[shared_job, ashby_job]) as ashby_mock,
-            patch("run_all.collect_greenhouse_jobs", return_value=[shared_job]) as greenhouse_mock,
-            patch("run_all.collect_lever_jobs", return_value=[lever_job]) as lever_mock,
+            patch(
+                "run_all.collect_ashby_jobs",
+                return_value=[shared_job, ashby_job],
+            ) as ashby_mock,
+            patch(
+                "run_all.collect_greenhouse_jobs",
+                return_value=[shared_job],
+            ) as greenhouse_mock,
+            patch(
+                "run_all.collect_lever_jobs",
+                return_value=[lever_job],
+            ) as lever_mock,
             patch("run_all.collect_nextjs_jobs", return_value=[]) as nextjs_mock,
         ):
             jobs = collect_all_jobs(targets, diagnostics=None)
@@ -73,6 +103,60 @@ class RunAllTests(unittest.TestCase):
         )
         for mock in (ashby_mock, greenhouse_mock, lever_mock, nextjs_mock):
             self.assertIsInstance(mock.call_args.args[0], set)
+
+    def test_collect_all_jobs_keeps_successful_sources_when_one_source_fails(self):
+        ashby_job = {**make_job(1), "source": "ashby", "target_value": "ashby"}
+        lever_job = {**make_job(2), "source": "lever", "target_value": "lever"}
+        targets = {
+            "ashby": ["ashby-company"],
+            "greenhouse": ["greenhouse-board"],
+            "lever": ["lever-company"],
+            "nextjs": ["nextjs-site"],
+        }
+        diagnostics = FakeDiagnostics()
+
+        with (
+            patch("run_all.collect_ashby_jobs", return_value=[ashby_job]),
+            patch(
+                "run_all.collect_greenhouse_jobs",
+                side_effect=RuntimeError("boom"),
+            ),
+            patch("run_all.collect_lever_jobs", return_value=[lever_job]),
+            patch("run_all.collect_nextjs_jobs", return_value=[]),
+        ):
+            jobs = collect_all_jobs(targets, diagnostics=diagnostics)
+
+        self.assertEqual(
+            ["https://example.com/job-1", "https://example.com/job-2"],
+            [job["url"] for job in jobs],
+        )
+        self.assertEqual([("greenhouse", "boom")], diagnostics.source_failures)
+
+    def test_collect_all_jobs_fails_when_every_source_fails(self):
+        targets = {
+            "ashby": ["ashby-company"],
+            "greenhouse": ["greenhouse-board"],
+            "lever": ["lever-company"],
+            "nextjs": ["nextjs-site"],
+        }
+        diagnostics = FakeDiagnostics()
+
+        with (
+            patch("run_all.collect_ashby_jobs", side_effect=RuntimeError("ashby")),
+            patch(
+                "run_all.collect_greenhouse_jobs",
+                side_effect=RuntimeError("greenhouse"),
+            ),
+            patch("run_all.collect_lever_jobs", side_effect=RuntimeError("lever")),
+            patch("run_all.collect_nextjs_jobs", side_effect=RuntimeError("nextjs")),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "All source collection failed"):
+                collect_all_jobs(targets, diagnostics=diagnostics)
+
+        self.assertEqual(
+            {"ashby", "greenhouse", "lever", "nextjs"},
+            {source for source, _error in diagnostics.source_failures},
+        )
 
     def test_select_jobs_for_recipient_skips_seen_urls_before_ranking(self):
         candidates = [make_job(1), make_job(2), make_job(3)]
@@ -98,8 +182,14 @@ class RunAllTests(unittest.TestCase):
         }
 
         with (
-            patch("run_all.rank_jobs", return_value=(ranked_jobs, ranking_stats)) as rank_mock,
-            patch("run_all.rerank_jobs_with_gemini", return_value=review_result) as rerank_mock,
+            patch(
+                "run_all.rank_jobs",
+                return_value=(ranked_jobs, ranking_stats),
+            ) as rank_mock,
+            patch(
+                "run_all.rerank_jobs_with_gemini",
+                return_value=review_result,
+            ) as rerank_mock,
         ):
             result = select_jobs_for_recipient(
                 candidates,
@@ -152,7 +242,10 @@ class RunAllTests(unittest.TestCase):
             )
 
         self.assertEqual(review_result, result)
-        send_digest_mock.assert_called_once_with(recipient_profile, review_result["jobs_to_send"])
+        send_digest_mock.assert_called_once_with(
+            recipient_profile,
+            review_result["jobs_to_send"],
+        )
         self.assertEqual(
             [("george", review_result["reviewed_jobs"])],
             storage.stored,
@@ -166,6 +259,89 @@ class RunAllTests(unittest.TestCase):
             recipient_worker_count(profiles),
         )
         self.assertEqual(1, recipient_worker_count([]))
+
+    def test_build_run_summary_counts_recipient_outcomes(self):
+        results = [
+            {
+                "review_mode": "gemini",
+                "jobs_to_send": [make_job(1), make_job(2)],
+                "reviewed_jobs": [make_job(1), make_job(2), make_job(3)],
+            },
+            {
+                "review_mode": "gemini_failed",
+                "review_error_stage": "batch_screening",
+                "jobs_to_send": [],
+                "reviewed_jobs": [],
+            },
+        ]
+
+        summary = build_run_summary(
+            candidates=[make_job(1), make_job(2), make_job(3)],
+            enriched_candidates=[make_job(1), make_job(2), make_job(3)],
+            recipient_profiles=[{"id": "one"}, {"id": "two"}],
+            results=results,
+        )
+
+        self.assertEqual(3, summary["candidate_jobs"])
+        self.assertEqual(2, summary["recipient_count"])
+        self.assertEqual(2, summary["jobs_sent"])
+        self.assertEqual(3, summary["reviewed_jobs"])
+        self.assertEqual({"gemini": 1, "gemini_failed": 1}, summary["review_modes"])
+        self.assertEqual(
+            {"batch_screening": 1},
+            summary["gemini_failure_stages"],
+        )
+
+    def test_build_and_write_run_snapshot(self):
+        diagnostics = FakeDiagnostics()
+        diagnostics.source_failures.append({"source": "greenhouse", "error": "boom"})
+        diagnostics.record_recipient_summary(
+            "george",
+            {
+                "review_mode": "gemini",
+                "ranked_jobs": 1,
+            },
+        )
+        candidates = [make_job(1)]
+        enriched_candidates = [{**make_job(1), "is_sponsor_licensed_employer": True}]
+        recipient_profiles = [{"id": "george", "email": "george@example.com"}]
+        recipient_results = [
+            {
+                "review_mode": "gemini",
+                "jobs_to_send": [make_job(1)],
+                "reviewed_jobs": [make_job(1)],
+            }
+        ]
+        run_summary = build_run_summary(
+            candidates,
+            enriched_candidates,
+            recipient_profiles,
+            recipient_results,
+        )
+
+        snapshot = build_run_snapshot(
+            candidates,
+            enriched_candidates,
+            recipient_profiles,
+            recipient_results,
+            run_summary,
+            diagnostics,
+        )
+        output_path = write_run_snapshot(
+            self.test_dir / "snapshot.json",
+            snapshot,
+        )
+        saved = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(RUN_SNAPSHOT_SCHEMA_VERSION, saved["schema_version"])
+        self.assertEqual(candidates, saved["candidates"])
+        self.assertEqual(enriched_candidates, saved["enriched_candidates"])
+        self.assertEqual(recipient_profiles, saved["recipient_profiles"])
+        self.assertEqual({"gemini": 1}, saved["run_summary"]["review_modes"])
+        self.assertEqual(
+            [{"source": "greenhouse", "error": "boom"}],
+            saved["source_failures"],
+        )
 
 
 if __name__ == "__main__":
