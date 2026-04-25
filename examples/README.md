@@ -24,6 +24,7 @@ Top-level fields:
 - `enabled`
 - `delivery.email`
 - `candidate.summary`
+- `candidate.education_status`
 - `candidate.target_roles`
 - `job_preferences.target_seniority`
 - `job_preferences.salary`
@@ -33,10 +34,14 @@ Top-level fields:
 
 Useful notes:
 - `candidate.target_roles[*].match_text` is the strongest personalization lever for semantic ranking.
+- `candidate.summary`, `candidate.education_status`, and `eligibility.work_authorization_summary` are sent to Gemini as candidate context.
 - `job_preferences.target_seniority.max_explicit_years` controls the regex-based experience filter.
 - `job_preferences.target_seniority.boost_multiplier` and `boost_title_terms` control the title boost for junior-oriented titles.
+- `eligibility.check_hard_eligibility` tells Gemini to judge clearance, nationality, citizenship, and explicit UK-residency requirements.
 - `llm_review.extra_screening_guidance` affects Gemini pass one.
 - `llm_review.extra_final_ranking_guidance` affects Gemini pass two.
+
+Runtime does not read `recipient_profiles.local.json`. Recipient profiles must be stored in the active database; local JSON files are only scratch data unless a separate import script uses them.
 
 ## Target File Notes
 

@@ -21,6 +21,7 @@ The intended scale is a small admin-run setup, roughly up to 8 recipients per ru
 ## What It Does
 
 - loads public job-board targets from config
+- loads recipient profiles from the database
 - scrapes Ashby, Greenhouse, Lever, and selected Next.js boards
 - ranks jobs separately for each recipient profile with semantic matching
 - optionally reranks top semantic matches with Gemini for stricter final selection
@@ -67,16 +68,19 @@ Local runs are mainly for testing, debugging, or tuning config before pushing ch
 3. Set the needed environment variables.
 4. Run `python run_all.py`.
 
-By default, local runs use SQLite in `job_scraper.db`. Hosted runs should use Postgres via `DATABASE_URL`.
+Recipient profiles are database-only. The app does not read `recipient_profiles.local.json` at runtime. For realistic local runs, point `DATABASE_URL` at the same Postgres database you use in GitHub Actions, or seed the local SQLite `recipient_profiles` table yourself.
 
 ## Extra Tools
 
 - `python manage_targets.py list`
 - `python manage_targets.py list ashby`
+- `python tools/validate_recipient_profiles.py --enabled-only`
+- `python run_all.py --save-run runs/latest.json`
+- `python tools/replay_run.py runs/latest.json --recipient george`
 
 ## Database
 
-`recipient_seen_jobs` stores seen job URLs per recipient profile.
+`app_config.recipient_profiles` stores recipient config, and `recipient_seen_jobs` stores seen job URLs per recipient profile.
 
 ## Acknowledgements
 

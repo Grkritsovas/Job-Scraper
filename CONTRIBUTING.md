@@ -10,7 +10,7 @@ The app scrapes public job boards, filters for junior and UK-relevant roles, ran
 
 The intended steady-state runtime is a scheduled GitHub Actions workflow backed by persistent storage:
 
-1. Load recipient profiles and target lists from environment, local override files, or bundled examples.
+1. Load recipient profiles from the database, and load target lists from environment variables, local override files, or bundled examples.
 2. Scrape supported providers into a shared in-memory job shape.
 3. Enrich jobs with sponsorship metadata.
 4. Rank and filter jobs separately for each recipient.
@@ -26,15 +26,17 @@ The intended steady-state runtime is a scheduled GitHub Actions workflow backed 
 - `config/recipient_profiles.py` normalizes recipient settings and defaults.
 - `config/target_config.py` resolves scraper targets with precedence:
   environment -> local file -> bundled example.
-- `storage.py` selects SQLite locally and Postgres when `DATABASE_URL` points there.
+- `storage.py` selects SQLite by default and Postgres when `DATABASE_URL` points there.
+- Runtime recipient profiles are database-only. Ignored files such as `recipient_profiles.local.json` are not read by `run_all.py`.
 
 ### 2. Scraper collection
 
-- `run_all.collect_all_jobs()` calls each scraper in sequence:
+- `run_all.collect_all_jobs()` runs the four source families concurrently:
   `ashby_scraper`, `greenhouse_scraper`, `lever_scraper`, `nextjs_scraper`.
+- Each source family still scrapes serially internally.
 - Each scraper returns a shared job dict with fields such as:
   `company`, `title`, `url`, `description`, `locations`, `location`, `source`, `target_value`, `description_status`, `description_looks_like_html`.
-- A transient `seen_urls` set dedupes jobs across sources during a single run.
+- A single merge step dedupes jobs by URL after the source-family workers return.
 
 ### 3. Description and URL normalization
 
@@ -53,7 +55,9 @@ The intended steady-state runtime is a scheduled GitHub Actions workflow backed 
 
 - `run_all.select_jobs_for_recipient()` loads previously seen URLs for that recipient, then calls `matching/ranking.py`.
 - `matching/hard_filters.py` rejects obvious non-target roles first:
-  seniority, commercial titles, internships, non-UK locations, authorization/eligibility mismatches, and experience requirements above the junior threshold.
+  seniority, commercial titles, non-UK locations, authorization/eligibility mismatches, and experience requirements above the junior threshold.
+- Internship titles are not automatically rejected. Current-student-only internships are rejected from eligibility language in the description.
+- Commercial title filtering can be recipient-aware for explicitly targeted role families such as marketing.
 - `matching/profile_library.py` builds the semantic profile texts used for scoring.
 - `matching/ranking.py` then:
   - builds matching text from title + cleaned description
@@ -66,12 +70,13 @@ The intended steady-state runtime is a scheduled GitHub Actions workflow backed 
 
 ### 6. Unseen filtering and optional Gemini review
 
-- After ranking, `run_all.select_jobs_for_recipient()` removes jobs already seen by that recipient.
+- Before ranking, `run_all.select_jobs_for_recipient()` removes jobs already seen by that recipient.
 - `matching/gemini_rerank.py` has two modes:
   - semantic-only when `GEMINI_API_KEY` is absent
   - semantic + Gemini rerank when the key is present
 - Gemini mode uses semantic ranking as retrieval, sends the top unseen jobs through a two-pass prompt flow, and returns:
-  `jobs_to_send`, `reviewed_jobs`, `review_mode`, `llm_shortlisted_jobs`, `gemini_reviewed_jobs`, `review_error`.
+  `jobs_to_send`, `reviewed_jobs`, `review_mode`, `llm_shortlisted_jobs`, `gemini_reviewed_jobs`, `review_error`, `review_error_stage`.
+- Gemini prompts include structured candidate context such as `education_status` and `work_authorization_summary` when configured.
 - Important current invariant:
   in Gemini mode, reviewed jobs are marked as seen even when Gemini rejects them.
 - Important current failure behavior:
@@ -97,6 +102,10 @@ The intended steady-state runtime is a scheduled GitHub Actions workflow backed 
   Inspect effective scraper targets.
 - `preview_digest.py`
   Generate a local HTML/text digest preview from sample data.
+- `tools/validate_recipient_profiles.py`
+  Validate stored recipient profile JSON through the runtime normalization path.
+- `tools/replay_run.py`
+  Replay ranking and review from a saved run snapshot without scraping, sending email, or marking jobs seen.
 
 ### Config
 
@@ -252,7 +261,24 @@ $env:JOB_SCRAPER_DRY_RUN = "1"
 python run_all.py
 ```
 
-Local runs default to SQLite in `job_scraper.db` unless `DATABASE_URL` is set.
+Local runs default to SQLite in `job_scraper.db` unless `DATABASE_URL` is set, but recipient profiles still have to exist in the active database. `recipient_profiles.local.json` is ignored local scratch data and is not read by the runtime.
+
+### Validate recipient profiles
+
+```powershell
+python tools/validate_recipient_profiles.py --enabled-only
+```
+
+This uses the same normalization path as `run_all.py`, so it catches schema drift before a real run.
+
+### Save and replay a run
+
+```powershell
+python run_all.py --save-run runs/latest.json
+python tools/replay_run.py runs/latest.json --recipient george
+```
+
+Replay mode is useful for tuning profiles against the same scraped job set without sending email or writing seen-job records.
 
 ### Run the scraper normally
 
@@ -279,7 +305,7 @@ Current gaps to keep in mind:
 
 - no CI step currently runs the test suite explicitly
 - no live integration tests against job boards
-- no end-to-end orchestration test for `run_all.py`
+- no real-network end-to-end orchestration test for `run_all.py`
 - limited direct coverage for `nextjs_scraper.py`, `emailer.py`, and Postgres-specific behavior
 
 ## Practical Review Checklist

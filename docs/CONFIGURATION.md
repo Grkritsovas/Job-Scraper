@@ -45,6 +45,8 @@ Version history lives in:
 
 The app uses a direct Postgres connection through `DATABASE_URL`. It does not read recipient profiles from GitHub secrets or local runtime JSON files.
 
+Ignored files such as `recipient_profiles.local.json` may still exist as old scratch data in a local checkout, but they are not part of the runtime config path. Treat the database row as the source of truth.
+
 ## Grouped Recipient Profile Shape
 
 Each `config_json` record should look like this:
