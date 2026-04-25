@@ -139,6 +139,19 @@ class SemanticMatchingTests(unittest.TestCase):
         )
         self.assertEqual("eligibility", reason)
 
+    def test_internship_rejects_currently_pursuing_degree_requirement(self):
+        reason = get_hard_filter_reason(
+            make_job(
+                title="Software Engineer Intern",
+                description=(
+                    "Academic Foundation: Currently pursuing a B.S. or M.S. Degree "
+                    "in Computer Science with a graduation date between Autumn 2026 "
+                    "and Summer 2027."
+                ),
+            )
+        )
+        self.assertEqual("eligibility", reason)
+
     def test_graduating_between_range_is_not_hard_rejected(self):
         reason = get_hard_filter_reason(
             make_job(
@@ -149,6 +162,19 @@ class SemanticMatchingTests(unittest.TestCase):
             )
         )
         self.assertIsNone(reason)
+
+    def test_deep_experience_requirement_is_rejected_for_junior_pipeline(self):
+        reason = get_hard_filter_reason(
+            make_job(
+                title="Software Engineer, Internal Infrastructure",
+                description=(
+                    "You may be a good fit if you have deep experience running "
+                    "Kubernetes clusters at scale and troubleshooting cloud native "
+                    "infrastructure."
+                ),
+            )
+        )
+        self.assertEqual("experience", reason)
 
     def test_recipient_specific_max_years_experience_relaxes_hard_filter(self):
         jobs = [

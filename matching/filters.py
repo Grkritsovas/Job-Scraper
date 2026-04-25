@@ -40,12 +40,20 @@ AUTHORIZATION_MISMATCH_PATTERNS = [
 ELIGIBILITY_REJECT_PATTERNS = [
     r"\bmust be planning on graduating in \d{4}\b",
     r"\bthis should be your final internship before graduating\b",
+    r"\bwith a graduation date between\b",
+    r"\bgraduation date between\b",
     r"\bmust be (?:currently )?enrolled\b",
     r"\bcurrently enrolled\b",
+    r"\bcurrently pursuing.{0,80}\b(?:degree|b\.?s\.?|m\.?s\.?|bsc|msc|bachelor|master|phd)\b",
     r"\benrolled in (?:a |an |your )?(?:degree|university|college|school|course|program|programme)\b",
-    r"\bpursuing (?:a |an |your )?(?:degree|bachelor|bachelors|master|masters|phd)\b",
+    r"\bpursuing (?:a |an |your )?(?:degree|bachelor|bachelors|master|masters|phd|b\.?s\.?|m\.?s\.?|bsc|msc)\b",
     r"\breturning to (?:a |an |your )?(?:degree|university|college|school|course|program|programme)\b",
     r"\breturn to (?:a |an |your )?(?:degree|university|college|school|course|program|programme)\b",
     r"\bstudents only\b",
     r"\bcurrent student\b",
+]
+
+QUALITATIVE_EXPERIENCE_REJECT_PATTERNS = [
+    r"\bdeep experience\b",
+    r"\bextensive experience\b",
 ]

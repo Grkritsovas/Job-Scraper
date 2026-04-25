@@ -275,6 +275,12 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "quant finance, maritime, or other specialist commercial knowledge not "
             "supported by the candidate context."
         ),
+        "infrastructure_scope_rule": (
+            "Reject infrastructure, SRE, platform, cloud operations, and internal tooling "
+            "roles when Kubernetes, Terraform, CI/CD ownership, observability, incident "
+            "response, 24x7 on-call, GPU clusters, or cloud operations are core duties, "
+            "unless the target profiles explicitly include that infrastructure scope."
+        ),
         "comparison_rule": (
             "Judge each role on its own merits. "
             "If none are clearly good, return an empty list."
@@ -292,10 +298,11 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
         ),
         "student_programme_rule": (
             "Use candidate education_status when screening internships, placements, "
-            "and student programmes. Reject current-student-only roles, roles requiring "
-            "returning to study, and roles requiring a future graduation date unless "
-            "the candidate context directly confirms that eligibility. Graduate/open "
-            "internships can be kept only when the rest of the fit is realistic."
+            "and student programmes. Reject roles only when the job text explicitly "
+            "requires current-student status, current enrollment, returning to study, "
+            "or a future graduation date that the candidate does not meet. Do not "
+            "reject an internship merely because student status is unspecified; judge "
+            "the rest of the role fit normally."
         ),
         "output_rule": (
             "Return only credible candidates. "
@@ -308,7 +315,10 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "This includes SC clearance, DV clearance, security vetting, nationality or citizenship restrictions, "
             "and explicit continuous UK residency requirements such as 3 years, 5 years, or similar. "
             "Use work_authorization_summary when provided. Do not keep these roles unless "
-            "the candidate context directly confirms eligibility."
+            "the candidate context directly confirms eligibility. If work_authorization_summary "
+            "mentions time-limited authorization or a visa expiry, treat explicit no-sponsorship "
+            "language as a significant mismatch for roles that appear to require work beyond "
+            "that authorization window, but do not reject solely because sponsorship is unstated."
         )
     _add_salary_rule(instructions, recipient_profile)
     _add_extra_guidance(
@@ -363,6 +373,12 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "Reject roles whose final case depends on stretched reasoning, domain-specific "
             "ownership, or seniority the candidate does not clearly have."
         ),
+        "infrastructure_scope_rule": (
+            "Drop infrastructure, SRE, platform, cloud operations, and internal tooling "
+            "roles when Kubernetes, Terraform, CI/CD ownership, observability, incident "
+            "response, 24x7 on-call, GPU clusters, or cloud operations are core duties, "
+            "unless the target profiles explicitly include that infrastructure scope."
+        ),
         "bad_match_example": (
             "Example to reject: Quantitative Freight Analyst - Dry Bulk for an "
             "early-career Computer Science and AI graduate. Shared Python, forecasting, "
@@ -375,10 +391,11 @@ def _build_pass_two_prompt(recipient_profile, candidates):
         ),
         "student_programme_rule": (
             "Use candidate education_status when comparing internships, placements, "
-            "and student programmes. Drop current-student-only roles, roles requiring "
-            "returning to study, and roles requiring a future graduation date unless "
-            "the candidate context directly confirms that eligibility. Graduate/open "
-            "internships can remain only when the final fit is otherwise strong."
+            "and student programmes. Drop roles only when the job text explicitly "
+            "requires current-student status, current enrollment, returning to study, "
+            "or a future graduation date that the candidate does not meet. Do not "
+            "drop an internship merely because student status is unspecified; compare "
+            "the rest of the role fit normally."
         ),
         "output_rule": (
             "Return only the final shortlist as JSON matching the schema. "
@@ -391,7 +408,10 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "This includes SC clearance, DV clearance, security vetting, nationality or citizenship restrictions, "
             "and explicit continuous UK residency requirements such as 3 years, 5 years, or similar. "
             "Use work_authorization_summary when provided. Do not keep these roles unless "
-            "the candidate context directly confirms eligibility."
+            "the candidate context directly confirms eligibility. If work_authorization_summary "
+            "mentions time-limited authorization or a visa expiry, treat explicit no-sponsorship "
+            "language as a significant mismatch for roles that appear to require work beyond "
+            "that authorization window, but do not reject solely because sponsorship is unstated."
         )
     _add_salary_rule(instructions, recipient_profile)
     _add_extra_guidance(

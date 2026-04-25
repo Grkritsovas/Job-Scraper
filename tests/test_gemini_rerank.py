@@ -211,7 +211,10 @@ class GeminiRerankTests(unittest.TestCase):
             first_prompt,
         )
         self.assertIn('"student_programme_rule"', first_prompt)
-        self.assertIn("current-student-only roles", first_prompt)
+        self.assertIn("current-student status", first_prompt)
+        self.assertIn("Do not reject an internship merely", first_prompt)
+        self.assertIn('"infrastructure_scope_rule"', first_prompt)
+        self.assertIn("24x7 on-call", first_prompt)
         self.assertIn('"matched_profile": "Data Science"', second_prompt)
         self.assertIn("Graduated Oct 2025; not a current student.", second_prompt)
         self.assertIn("Graduate visa valid until Feb 2028.", second_prompt)
@@ -223,6 +226,8 @@ class GeminiRerankTests(unittest.TestCase):
             second_prompt,
         )
         self.assertIn('"student_programme_rule"', second_prompt)
+        self.assertIn("Do not drop an internship merely", second_prompt)
+        self.assertIn('"infrastructure_scope_rule"', second_prompt)
 
     def test_rerank_uses_top_n_and_splits_batches(self):
         jobs = [make_job(index) for index in range(1, 13)]
@@ -636,6 +641,10 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertIn("SC clearance", true_second_prompt)
         self.assertIn("Use work_authorization_summary", true_first_prompt)
         self.assertIn("Use work_authorization_summary", true_second_prompt)
+        self.assertIn("time-limited authorization", true_first_prompt)
+        self.assertIn("time-limited authorization", true_second_prompt)
+        self.assertIn("do not reject solely because sponsorship is unstated", true_first_prompt)
+        self.assertIn("do not reject solely because sponsorship is unstated", true_second_prompt)
 
 
 if __name__ == "__main__":

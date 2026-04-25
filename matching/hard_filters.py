@@ -6,6 +6,7 @@ from matching.filters import (
     HARD_COMMERCIAL_TERMS,
     HARD_ELIGIBILITY_TITLE_TERMS,
     HARD_SENIORITY_TERMS,
+    QUALITATIVE_EXPERIENCE_REJECT_PATTERNS,
     RECIPIENT_AWARE_COMMERCIAL_TERMS,
 )
 from shared.locations import is_uk_location
@@ -126,6 +127,14 @@ def has_eligibility_mismatch(description):
     )
 
 
+def has_qualitative_experience_mismatch(description):
+    normalized_description = (description or "").lower()
+    return any(
+        re.search(pattern, normalized_description, flags=re.IGNORECASE)
+        for pattern in QUALITATIVE_EXPERIENCE_REJECT_PATTERNS
+    )
+
+
 def extract_required_experience_years(description):
     if not description:
         return []
@@ -150,6 +159,9 @@ def passes_experience_filter(
 
     if max_years_experience is None:
         return True
+
+    if has_qualitative_experience_mismatch(description):
+        return False
 
     return not any(
         years_required > max_years_experience
