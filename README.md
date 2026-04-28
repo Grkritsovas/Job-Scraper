@@ -76,6 +76,7 @@ Recipient profiles are database-only. The app does not read `recipient_profiles.
 - `python manage_targets.py list`
 - `python manage_targets.py list ashby`
 - `python tools/validate_recipient_profiles.py --enabled-only`
+- `python admin_ui.py`
 - `python run_all.py --save-run runs/latest.json`
 - `python tools/replay_run.py runs/latest.json --recipient demo-recipient`
 

@@ -9,6 +9,9 @@ concurrency:
   group: job-scraper
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   scrape:
     runs-on: ubuntu-latest

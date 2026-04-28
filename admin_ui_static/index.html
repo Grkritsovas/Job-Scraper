@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Job Scraper Admin</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">JS</div>
+          <div>
+            <h1>Job Scraper</h1>
+            <p id="backendLabel">Local admin</p>
+          </div>
+        </div>
+        <nav class="nav-tabs" aria-label="Sections">
+          <button class="nav-tab is-active" data-view="profilesView">Profiles</button>
+          <button class="nav-tab" data-view="auditView">Audit</button>
+        </nav>
+      </aside>
+
+      <main class="workspace">
+        <section id="profilesView" class="view is-active">
+          <div class="topbar">
+            <div>
+              <h2>Recipient Profiles</h2>
+              <p id="profileCount">0 profiles</p>
+            </div>
+            <div class="actions">
+              <button id="newProfileButton" type="button">New</button>
+              <button id="reloadProfilesButton" type="button">Reload</button>
+            </div>
+          </div>
+
+          <div class="profile-layout">
+            <section class="list-panel" aria-label="Profile list">
+              <div id="profileList" class="profile-list"></div>
+            </section>
+
+            <section class="editor-panel" aria-label="Profile editor">
+              <div class="editor-header">
+                <div>
+                  <h3 id="selectedProfileTitle">No profile selected</h3>
+                  <p id="selectedProfileMeta">Select or create a profile.</p>
+                </div>
+                <div class="actions">
+                  <button id="validateProfileButton" type="button">Validate</button>
+                  <button id="normalizeProfileButton" type="button">Normalize</button>
+                  <button id="saveProfileButton" type="button" class="primary">Save</button>
+                </div>
+              </div>
+
+              <div class="status-line" id="profileStatus"></div>
+              <textarea id="profileEditor" spellcheck="false"></textarea>
+            </section>
+          </div>
+        </section>
+
+        <section id="auditView" class="view">
+          <div class="topbar">
+            <div>
+              <h2>Review Audit</h2>
+              <p id="auditCount">0 rows</p>
+            </div>
+            <div class="actions">
+              <button id="reloadAuditButton" type="button">Reload</button>
+            </div>
+          </div>
+
+          <form id="auditFilters" class="filter-bar">
+            <label>
+              Recipient
+              <select id="auditRecipient">
+                <option value="">All</option>
+              </select>
+            </label>
+            <label>
+              Family
+              <select id="auditFamily">
+                <option value="">All</option>
+              </select>
+            </label>
+            <label>
+              Classification
+              <select id="auditClassification">
+                <option value="">All</option>
+              </select>
+            </label>
+            <label>
+              Run
+              <select id="auditRun">
+                <option value="">All</option>
+              </select>
+            </label>
+            <label class="limit-field">
+              Limit
+              <input id="auditLimit" type="number" min="1" max="500" value="150">
+            </label>
+          </form>
+
+          <div id="auditSummary" class="summary-strip"></div>
+          <div id="auditRows" class="audit-rows"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

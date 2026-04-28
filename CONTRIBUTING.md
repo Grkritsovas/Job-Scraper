@@ -102,6 +102,8 @@ The intended steady-state runtime is a scheduled GitHub Actions workflow backed 
   Inspect effective scraper targets.
 - `preview_digest.py`
   Generate a local HTML/text digest preview from sample data.
+- `admin_ui.py`
+  Run a local admin UI for database-backed recipient profiles and review audit rows.
 - `tools/validate_recipient_profiles.py`
   Validate stored recipient profile JSON through the runtime normalization path.
 - `tools/replay_run.py`
@@ -275,7 +277,7 @@ This uses the same normalization path as `run_all.py`, so it catches schema drif
 
 ```powershell
 python run_all.py --save-run runs/latest.json
-python tools/replay_run.py runs/latest.json --recipient george
+python tools/replay_run.py runs/latest.json --recipient demo-recipient
 ```
 
 Replay mode is useful for tuning profiles against the same scraped job set without sending email or writing seen-job records.

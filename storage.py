@@ -201,21 +201,37 @@ class Storage:
         self._ensure_postgres_schema()
 
     def load_recipient_profile_configs(self, enabled_only=True):
+        rows = self.load_recipient_profile_records(enabled_only=enabled_only)
+        configs = []
+        for row in rows:
+            parsed = row.get("config")
+            if isinstance(parsed, dict):
+                configs.append(parsed)
+        return configs
+
+    def load_recipient_profile_records(self, enabled_only=True):
         rows = self._fetch_all(
             f"""
-            SELECT config_json
+            SELECT recipient_id, email, enabled, config_json, created_at, updated_at
             FROM {self._recipient_profiles_table_name()}
             {"WHERE enabled = " + self._true_literal() if enabled_only else ""}
             ORDER BY recipient_id
             """,
             (),
         )
-        configs = []
+        records = []
         for row in rows:
             parsed = self._load_json_field(row.get("config_json"))
-            if isinstance(parsed, dict):
-                configs.append(parsed)
-        return configs
+            if not isinstance(parsed, dict):
+                continue
+            records.append(
+                {
+                    **row,
+                    "enabled": self._coerce_bool(row.get("enabled")),
+                    "config": parsed,
+                }
+            )
+        return records
 
     def upsert_recipient_profile_configs(self, rows):
         if not rows:
@@ -536,15 +552,62 @@ class Storage:
         finally:
             connection.close()
 
-    def load_review_audit_rows(self):
+    def load_review_audit_rows(
+        self,
+        limit=None,
+        recipient_id=None,
+        classification=None,
+        review_family=None,
+        run_id=None,
+        latest_first=False,
+    ):
+        filters = []
+        params = []
+        placeholder = "?" if self.backend == "sqlite" else "%s"
+
+        for column_name, value in (
+            ("recipient_id", recipient_id),
+            ("classification", classification),
+            ("review_family", review_family),
+            ("run_id", run_id),
+        ):
+            if value:
+                filters.append(f"{column_name} = {placeholder}")
+                params.append(value)
+
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        order_direction = "DESC" if latest_first else "ASC"
+        limit_clause = ""
+        if limit is not None:
+            limit_clause = f"LIMIT {placeholder}"
+            params.append(max(1, int(limit)))
+
         return self._fetch_all(
-            """
+            f"""
             SELECT *
             FROM recipient_review_audit
-            ORDER BY audit_id
+            {where_clause}
+            ORDER BY created_at {order_direction}, audit_id {order_direction}
+            {limit_clause}
+            """,
+            tuple(params),
+        )
+
+    def load_review_audit_filter_values(self):
+        rows = self._fetch_all(
+            """
+            SELECT recipient_id, review_family, classification, run_id
+            FROM recipient_review_audit
+            ORDER BY created_at DESC, audit_id DESC
             """,
             (),
         )
+        return {
+            "recipient_ids": self._unique_values(row.get("recipient_id") for row in rows),
+            "review_families": self._unique_values(row.get("review_family") for row in rows),
+            "classifications": self._unique_values(row.get("classification") for row in rows),
+            "run_ids": self._unique_values(row.get("run_id") for row in rows),
+        }
 
     def _fetch_all(self, query, params):
         if self.backend == "sqlite":
@@ -627,6 +690,24 @@ class Storage:
 
     def _true_literal(self):
         return "1" if self.backend == "sqlite" else "TRUE"
+
+    @staticmethod
+    def _coerce_bool(value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int):
+            return value != 0
+        if isinstance(value, str):
+            return value.lower() in {"1", "true", "t", "yes"}
+        return bool(value)
+
+    @staticmethod
+    def _unique_values(values):
+        return [
+            value
+            for value in dict.fromkeys(values)
+            if value not in (None, "")
+        ]
 
     def _review_audit_row_count(self):
         rows = self._fetch_all(

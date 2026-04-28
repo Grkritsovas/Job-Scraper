@@ -49,6 +49,24 @@ The app uses a direct Postgres connection through `DATABASE_URL`. It does not re
 
 Ignored files such as `recipient_profiles.local.json` may still exist as old scratch data in a local checkout, but they are not part of the runtime config path. Treat the database row as the source of truth.
 
+## Local Admin UI
+
+Run the local admin UI with:
+
+```powershell
+python admin_ui.py
+```
+
+By default it opens on `http://127.0.0.1:8765` and uses the same storage selection as the scraper. Set `DATABASE_URL` or pass `--database-url` to point it at a specific SQLite or Postgres database.
+
+If `DATABASE_URL` is set, `python admin_ui.py` tries that database first. If the connection fails, the UI falls back to local SQLite so the page can still run. You can also pass a database URL directly:
+
+```powershell
+python admin_ui.py "postgresql://user:password@host:5432/database"
+```
+
+The UI can edit database-backed recipient profile JSON, validate/normalize it through the runtime profile loader, and browse recent `recipient_review_audit` rows. It does not edit GitHub secrets, local recipient JSON files, or seen-job records.
+
 ## Review Audit
 
 The scraper writes compact review audit rows to:
@@ -68,10 +86,10 @@ Each `config_json` record should look like this:
 
 ```json
 {
-  "id": "george",
+  "id": "demo-recipient",
   "enabled": true,
   "delivery": {
-    "email": "george@example.com"
+    "email": "recipient@example.com"
   },
   "candidate": {
     "summary": "Short factual candidate summary.",
@@ -189,14 +207,14 @@ directory is ignored by Git.
 Replay ranking and review without scraping, sending email, or marking jobs seen:
 
 ```powershell
-python tools/replay_run.py runs/latest.json --recipient george
+python tools/replay_run.py runs/latest.json --recipient demo-recipient
 ```
 
 By default replay uses recipient profiles saved in the snapshot. To tune the
 current database profile against the same saved job set, use:
 
 ```powershell
-python tools/replay_run.py runs/latest.json --profiles current-db --recipient george
+python tools/replay_run.py runs/latest.json --profiles current-db --recipient demo-recipient
 ```
 
 Use `--semantic-only` to temporarily disable Gemini for the replay process, and

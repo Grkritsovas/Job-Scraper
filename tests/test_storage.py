@@ -82,11 +82,15 @@ class StorageTests(unittest.TestCase):
 
         storage.upsert_recipient_profile_configs(rows)
         loaded = storage.load_recipient_profile_configs(enabled_only=False)
+        records = storage.load_recipient_profile_records(enabled_only=False)
 
         self.assertEqual(1, len(loaded))
         self.assertEqual("george", loaded[0]["id"])
         self.assertEqual("george@example.com", loaded[0]["delivery"]["email"])
         self.assertEqual(2, loaded[0]["job_preferences"]["target_seniority"]["max_explicit_years"])
+        self.assertEqual("george", records[0]["recipient_id"])
+        self.assertEqual("george@example.com", records[0]["email"])
+        self.assertTrue(records[0]["enabled"])
 
     def test_review_audit_rows_round_trip_and_retention(self):
         db_path = (self.test_dir / "audit.db").resolve()
@@ -116,6 +120,13 @@ class StorageTests(unittest.TestCase):
         storage.store_review_audit_rows("recipient-a", "run-1", rows)
         deleted = storage.prune_review_audit_rows(keep_rows=3, high_water_rows=5)
         loaded = storage.load_review_audit_rows()
+        latest = storage.load_review_audit_rows(
+            limit=2,
+            recipient_id="recipient-a",
+            classification="semantic_above_threshold",
+            latest_first=True,
+        )
+        filter_values = storage.load_review_audit_filter_values()
 
         self.assertEqual(3, deleted)
         self.assertEqual(3, len(loaded))
@@ -130,6 +141,12 @@ class StorageTests(unittest.TestCase):
         self.assertEqual("recipient-a", loaded[0]["recipient_id"])
         self.assertEqual("run-1", loaded[0]["run_id"])
         self.assertEqual("semantic_above_threshold", loaded[0]["classification"])
+        self.assertEqual(
+            ["https://example.com/job-6", "https://example.com/job-5"],
+            [row["job_url"] for row in latest],
+        )
+        self.assertEqual(["recipient-a"], filter_values["recipient_ids"])
+        self.assertEqual(["semantic"], filter_values["review_families"])
 
 
 if __name__ == "__main__":

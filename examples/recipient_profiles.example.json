@@ -1,6 +1,6 @@
 [
   {
-    "id": "george",
+    "id": "demo-recipient",
     "enabled": true,
     "delivery": {
       "email": "you@example.com"
@@ -47,10 +47,10 @@
     }
   },
   {
-    "id": "maria",
+    "id": "demo-marketing-recipient",
     "enabled": true,
     "delivery": {
-      "email": "maria@example.com"
+      "email": "marketing-recipient@example.com"
     },
     "candidate": {
       "summary": "Early-career candidate with communication, coordination, and analytical support strengths, plus growing AI and data exposure. Best fit for junior roles with clear structure, mentoring, and room to learn on the job.",
