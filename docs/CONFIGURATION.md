@@ -20,6 +20,8 @@ Optional GitHub Actions variables:
 - `JOB_SCRAPER_LLM_RETRY_ATTEMPTS`
 - `JOB_SCRAPER_LLM_RETRY_BASE_SECONDS`
 - `JOB_SCRAPER_MAX_SEMANTIC_EMAIL_JOBS`
+- `JOB_SCRAPER_AUDIT_KEEP_ROWS`
+- `JOB_SCRAPER_AUDIT_HIGH_WATER_ROWS`
 - `ASHBY_COMPANIES_JSON`
 - `GREENHOUSE_BOARD_TOKENS_JSON`
 - `LEVER_COMPANIES_JSON`
@@ -46,6 +48,19 @@ Version history lives in:
 The app uses a direct Postgres connection through `DATABASE_URL`. It does not read recipient profiles from GitHub secrets or local runtime JSON files.
 
 Ignored files such as `recipient_profiles.local.json` may still exist as old scratch data in a local checkout, but they are not part of the runtime config path. Treat the database row as the source of truth.
+
+## Review Audit
+
+The scraper writes compact review audit rows to:
+- `recipient_review_audit`
+
+Rows are keyed for review by `run_id`, `recipient_id`, `job_url`, `review_family`, and `classification`. The audit stores job metadata, semantic scores, hard-filter reasons, Gemini pass/fail classification, concise Gemini reasons, and short evidence snippets. It does not store full job descriptions or recipient profile JSON.
+
+Audit retention is controlled by:
+- `JOB_SCRAPER_AUDIT_KEEP_ROWS`, default `1000`
+- `JOB_SCRAPER_AUDIT_HIGH_WATER_ROWS`, default `1500`
+
+When total audit rows exceed the high-water value, the oldest rows are pruned until only the keep count remains.
 
 ## Grouped Recipient Profile Shape
 

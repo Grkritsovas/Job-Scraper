@@ -395,6 +395,64 @@ class SemanticMatchingTests(unittest.TestCase):
         self.assertIn("Build full-stack product features with React and Java.", scored_text)
         self.assertNotIn("Our Commitment to Diversity", scored_text)
 
+    def test_rank_jobs_returns_audit_rows_with_hard_filter_cap(self):
+        senior_jobs = [
+            make_job(
+                title=f"Senior Software Engineer {index}",
+                url=f"https://example.com/senior-{index}",
+            )
+            for index in range(35)
+        ]
+        ranked_jobs, stats = rank_jobs(
+            senior_jobs,
+            {
+                "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
+                "min_top_score": 0.43,
+            },
+            matcher=FakeMatcher(),
+            return_stats=True,
+        )
+
+        self.assertEqual([], ranked_jobs)
+        hard_filter_rows = [
+            row
+            for row in stats["audit_rows"]
+            if row["classification"] == "hard_filtered"
+        ]
+        self.assertEqual(30, len(hard_filter_rows))
+        self.assertTrue(
+            all(row["hard_filter_reason"] == "title_seniority" for row in hard_filter_rows)
+        )
+
+    def test_rank_jobs_returns_semantic_below_and_above_audit_rows(self):
+        jobs = [
+            make_job(
+                url="https://example.com/below",
+                description="borderline_fit",
+            ),
+            make_job(
+                url="https://example.com/above",
+                description="strong_fit",
+            ),
+        ]
+        ranked_jobs, stats = rank_jobs(
+            jobs,
+            {
+                "semantic_profiles": ["swe", "data_science", "ai_ml_engineer"],
+                "min_top_score": 0.5,
+            },
+            matcher=FakeMatcher(),
+            return_stats=True,
+        )
+
+        self.assertEqual(["https://example.com/above"], [job["url"] for job in ranked_jobs])
+        classifications = {
+            row["job_url"]: row["classification"]
+            for row in stats["audit_rows"]
+        }
+        self.assertEqual("semantic_below_threshold", classifications["https://example.com/below"])
+        self.assertEqual("semantic_above_threshold", classifications["https://example.com/above"])
+
 
 if __name__ == "__main__":
     unittest.main()

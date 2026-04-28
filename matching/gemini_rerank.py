@@ -62,9 +62,28 @@ PASS_ONE_JSON_SCHEMA = {
                     "mismatch_evidence",
                 ],
             },
-        }
+        },
+        "rejected_jobs": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "job_url": {"type": "string"},
+                    "rejection_reason": {"type": "string"},
+                    "mismatch_evidence": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": [
+                    "job_url",
+                    "rejection_reason",
+                    "mismatch_evidence",
+                ],
+            },
+        },
     },
-    "required": ["candidates"],
+    "required": ["candidates", "rejected_jobs"],
 }
 PASS_TWO_JSON_SCHEMA = {
     "type": "object",
@@ -80,9 +99,28 @@ PASS_TWO_JSON_SCHEMA = {
                 },
                 "required": ["job_url", "fit_score", "why_apply"],
             },
-        }
+        },
+        "rejected_jobs": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "job_url": {"type": "string"},
+                    "rejection_reason": {"type": "string"},
+                    "mismatch_evidence": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": [
+                    "job_url",
+                    "rejection_reason",
+                    "mismatch_evidence",
+                ],
+            },
+        },
     },
-    "required": ["shortlisted_jobs"],
+    "required": ["shortlisted_jobs", "rejected_jobs"],
 }
 
 
@@ -120,6 +158,7 @@ def _build_result(
     gemini_reviewed_jobs=None,
     review_error=None,
     review_error_stage=None,
+    audit_rows=None,
 ):
     return {
         "jobs_to_send": jobs_to_send,
@@ -129,6 +168,7 @@ def _build_result(
         "gemini_reviewed_jobs": gemini_reviewed_jobs,
         "review_error": review_error,
         "review_error_stage": review_error_stage,
+        "audit_rows": audit_rows or [],
     }
 
 
@@ -181,6 +221,74 @@ def _build_job_payload(job, description_chars):
     if job.get("salary_upper_bound_gbp") is not None:
         payload["salary_upper_bound_gbp"] = job.get("salary_upper_bound_gbp")
     return payload
+
+
+def _base_gemini_audit_row(
+    job,
+    classification,
+    stage,
+    seen_recorded=False,
+    sent=False,
+    reason="",
+    supporting_evidence=None,
+    mismatch_evidence=None,
+    review_error=None,
+    review_error_stage=None,
+    metadata=None,
+):
+    return {
+        "job_url": job.get("url", ""),
+        "source_type": job.get("source", ""),
+        "target_value": job.get("target_value", ""),
+        "company_name": job.get("company", ""),
+        "title": job.get("title", ""),
+        "location": job.get("location", ""),
+        "review_family": "gemini",
+        "classification": classification,
+        "stage": stage,
+        "seen_recorded": seen_recorded,
+        "sent": sent,
+        "semantic_rank": job.get("semantic_rank"),
+        "semantic_score": job.get("semantic_ranking_score", job.get("ranking_score")),
+        "semantic_threshold": job.get("semantic_threshold"),
+        "semantic_top_profile": job.get("top_profile"),
+        "semantic_second_profile": job.get("second_profile"),
+        "semantic_fit_summary": job.get("fit_summary"),
+        "title_boost_multiplier": job.get("title_boost_multiplier"),
+        "salary_upper_bound_gbp": job.get("salary_upper_bound_gbp"),
+        "salary_penalty_applied": job.get("salary_penalty_applied"),
+        "gemini_pass1_score": job.get(
+            "gemini_pass1_fit_score",
+            job.get("llm_fit_score"),
+        ),
+        "gemini_pass2_score": job.get("final_llm_fit_score"),
+        "gemini_matched_profile": job.get("llm_matched_profile"),
+        "gemini_reason": normalize_text_whitespace(reason),
+        "supporting_evidence": supporting_evidence or [],
+        "mismatch_evidence": mismatch_evidence or [],
+        "review_error": review_error,
+        "review_error_stage": review_error_stage,
+        "metadata": metadata or {},
+    }
+
+
+def _gemini_failure_audit_rows(
+    jobs,
+    classification,
+    stage,
+    review_error,
+    review_error_stage,
+):
+    return [
+        _base_gemini_audit_row(
+            job,
+            classification,
+            stage,
+            review_error=review_error,
+            review_error_stage=review_error_stage,
+        )
+        for job in jobs
+    ]
 
 
 def _build_candidate_context(recipient_profile):
@@ -251,8 +359,9 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "Do not keep a role unless this candidate could plausibly be hired for it now."
         ),
         "selection_rule": (
-            "False positives are worse than false negatives. "
-            "Do not keep a role unless the fit is clear."
+            "Keep roles that are plausibly relevant with concrete evidence. "
+            "Reject obvious mismatches and roles where the match relies mainly "
+            "on stretched tool overlap, seniority, or unsupported domain depth."
         ),
         "bad_match_example": (
             "Bad match example: Quantitative Freight Analyst - Dry Bulk for an "
@@ -305,8 +414,9 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "the rest of the role fit normally."
         ),
         "output_rule": (
-            "Return only credible candidates. "
-            "For why_apply, write at most 2 short simple sentences."
+            "Return every provided job exactly once, either in candidates or "
+            "rejected_jobs. For why_apply and rejection_reason, write at most "
+            "2 short simple sentences."
         ),
     }
     if recipient_profile.get("care_about_hard_eligibility", False):
@@ -366,8 +476,10 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "Drop roles that only look relevant because of tool overlap."
         ),
         "selection_rule": (
-            "False positives are worse than false negatives. "
-            "If none are clearly strong matches, return an empty list."
+            "Keep roles that remain plausibly relevant with concrete evidence "
+            "after comparison. Drop obvious mismatches and roles where the match "
+            "relies mainly on stretched tool overlap, seniority, or unsupported "
+            "domain depth."
         ),
         "scope_rule": (
             "Reject roles whose final case depends on stretched reasoning, domain-specific "
@@ -398,8 +510,9 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "the rest of the role fit normally."
         ),
         "output_rule": (
-            "Return only the final shortlist as JSON matching the schema. "
-            "For why_apply, write at most 2 short simple sentences."
+            "Return every screened candidate exactly once, either in "
+            "shortlisted_jobs or rejected_jobs. For why_apply and "
+            "rejection_reason, write at most 2 short simple sentences."
         ),
     }
     if recipient_profile.get("care_about_hard_eligibility", False):
@@ -568,6 +681,7 @@ def _run_batch_screening(
         if job.get("url")
     }
     screened_candidates = []
+    pass_one_rejections = {}
     seen_urls = set()
 
     for batch in _chunked(candidate_jobs, batch_size):
@@ -576,6 +690,7 @@ def _run_batch_screening(
             for job in batch
             if job.get("url")
         }
+        handled_batch_urls = set()
         prompt = _build_pass_one_prompt(
             recipient_profile,
             batch,
@@ -596,6 +711,7 @@ def _run_batch_screening(
             matched_profile = normalize_text_whitespace(item.get("matched_profile", ""))
             if not matched_profile:
                 continue
+            handled_batch_urls.add(job_url)
 
             try:
                 fit_score = int(item.get("fit_score", 0))
@@ -614,6 +730,7 @@ def _run_batch_screening(
                     "llm_matched_profile": matched_profile,
                     "ranking_score": fit_score / 100.0,
                     "llm_fit_score": fit_score,
+                    "gemini_pass1_fit_score": fit_score,
                     "why_apply": why_apply,
                     "supporting_evidence": supporting_evidence,
                     "mismatch_evidence": mismatch_evidence,
@@ -622,18 +739,42 @@ def _run_batch_screening(
             )
             seen_urls.add(job_url)
 
+        for item in payload.get("rejected_jobs", []):
+            job_url = normalize_text_whitespace(item.get("job_url", ""))
+            if not job_url or job_url in handled_batch_urls or job_url not in batch_by_url:
+                continue
+            handled_batch_urls.add(job_url)
+            pass_one_rejections[job_url] = {
+                "job": batch_by_url[job_url],
+                "reason": normalize_text_whitespace(
+                    item.get("rejection_reason", "")
+                ),
+                "mismatch_evidence": _normalize_string_list(
+                    item.get("mismatch_evidence")
+                ),
+            }
+
+        for job_url, job in batch_by_url.items():
+            if job_url in handled_batch_urls:
+                continue
+            pass_one_rejections[job_url] = {
+                "job": job,
+                "reason": "Gemini did not return this job as a candidate.",
+                "mismatch_evidence": [],
+            }
+
     screened_candidates.sort(
         key=lambda job: (
             -job.get("llm_fit_score", 0),
             job.get("_original_index", 10**9),
         )
     )
-    return screened_candidates
+    return screened_candidates, pass_one_rejections
 
 
 def _run_final_rerank(candidates, recipient_profile, client, model, retry_deadline):
     if not candidates:
-        return []
+        return [], {}
 
     candidates_by_url = {
         candidate["url"]: candidate
@@ -650,6 +791,7 @@ def _run_final_rerank(candidates, recipient_profile, client, model, retry_deadli
     )
     final_shortlist = []
     seen_urls = set()
+    pass_two_rejections = {}
 
     for item in payload.get("shortlisted_jobs", []):
         job_url = normalize_text_whitespace(item.get("job_url", ""))
@@ -669,10 +811,36 @@ def _run_final_rerank(candidates, recipient_profile, client, model, retry_deadli
                 **original_candidate,
                 "ranking_score": fit_score / 100.0,
                 "llm_fit_score": fit_score,
+                "final_llm_fit_score": fit_score,
                 "why_apply": why_apply or original_candidate.get("why_apply", ""),
             }
         )
         seen_urls.add(job_url)
+
+    for item in payload.get("rejected_jobs", []):
+        job_url = normalize_text_whitespace(item.get("job_url", ""))
+        if not job_url or job_url in seen_urls or job_url not in candidates_by_url:
+            continue
+
+        pass_two_rejections[job_url] = {
+            "job": candidates_by_url[job_url],
+            "reason": normalize_text_whitespace(
+                item.get("rejection_reason", "")
+            ),
+            "mismatch_evidence": _normalize_string_list(
+                item.get("mismatch_evidence")
+            ),
+        }
+        seen_urls.add(job_url)
+
+    for job_url, candidate in candidates_by_url.items():
+        if job_url in seen_urls:
+            continue
+        pass_two_rejections[job_url] = {
+            "job": candidate,
+            "reason": "Gemini did not return this screened candidate in the final shortlist.",
+            "mismatch_evidence": [],
+        }
 
     final_shortlist.sort(
         key=lambda job: (
@@ -680,7 +848,7 @@ def _run_final_rerank(candidates, recipient_profile, client, model, retry_deadli
             job.get("_original_index", 10**9),
         )
     )
-    return final_shortlist
+    return final_shortlist, pass_two_rejections
 
 
 def _strip_internal_fields(jobs):
@@ -694,6 +862,115 @@ def _strip_internal_fields(jobs):
     ]
 
 
+def _pass_one_rejection_audit_rows(
+    pass_one_rejections,
+    classification,
+    seen_recorded,
+    review_error=None,
+    review_error_stage=None,
+):
+    rows = []
+    for rejection in pass_one_rejections.values():
+        rows.append(
+            _base_gemini_audit_row(
+                rejection["job"],
+                classification,
+                "gemini_pass1",
+                seen_recorded=seen_recorded,
+                reason=rejection.get("reason", ""),
+                mismatch_evidence=rejection.get("mismatch_evidence") or [],
+                review_error=review_error,
+                review_error_stage=review_error_stage,
+            )
+        )
+    return rows
+
+
+def _successful_gemini_audit_rows(
+    pass_one_rejections,
+    screened_candidates,
+    final_shortlist,
+    pass_two_rejections,
+):
+    audit_rows = _pass_one_rejection_audit_rows(
+        pass_one_rejections,
+        "gemini_pass1_rejected_seen",
+        seen_recorded=True,
+    )
+    final_by_url = {
+        job["url"]: job
+        for job in final_shortlist
+        if job.get("url")
+    }
+
+    for candidate in screened_candidates:
+        job_url = candidate.get("url", "")
+        final_job = final_by_url.get(job_url)
+        if final_job is not None:
+            audit_rows.append(
+                _base_gemini_audit_row(
+                    final_job,
+                    "gemini_pass2_approved_sent_seen",
+                    "gemini_pass2",
+                    seen_recorded=True,
+                    sent=True,
+                    reason=final_job.get("why_apply", ""),
+                    supporting_evidence=final_job.get("supporting_evidence") or [],
+                    mismatch_evidence=final_job.get("mismatch_evidence") or [],
+                    metadata={"pass1_reason": candidate.get("why_apply", "")},
+                )
+            )
+            continue
+
+        rejection = pass_two_rejections.get(job_url, {})
+        audit_rows.append(
+            _base_gemini_audit_row(
+                candidate,
+                "gemini_pass1_approved_pass2_rejected_seen",
+                "gemini_pass2",
+                seen_recorded=True,
+                reason=rejection.get("reason", ""),
+                supporting_evidence=candidate.get("supporting_evidence") or [],
+                mismatch_evidence=(
+                    rejection.get("mismatch_evidence")
+                    or candidate.get("mismatch_evidence")
+                    or []
+                ),
+                metadata={"pass1_reason": candidate.get("why_apply", "")},
+            )
+        )
+
+    return audit_rows
+
+
+def _final_failure_audit_rows(
+    pass_one_rejections,
+    screened_candidates,
+    review_error,
+):
+    audit_rows = _pass_one_rejection_audit_rows(
+        pass_one_rejections,
+        "gemini_pass1_rejected_final_failed_not_seen",
+        seen_recorded=False,
+        review_error=review_error,
+        review_error_stage="final_rerank",
+    )
+    for candidate in screened_candidates:
+        audit_rows.append(
+            _base_gemini_audit_row(
+                candidate,
+                "gemini_pass1_approved_final_failed_not_seen",
+                "gemini_pass2",
+                reason=candidate.get("why_apply", ""),
+                supporting_evidence=candidate.get("supporting_evidence") or [],
+                mismatch_evidence=candidate.get("mismatch_evidence") or [],
+                review_error=review_error,
+                review_error_stage="final_rerank",
+            )
+        )
+    return audit_rows
+
+
 def rerank_jobs_with_gemini(
     jobs,
     recipient_profile,
@@ -704,7 +981,13 @@ def rerank_jobs_with_gemini(
     description_chars=None,
 ):
     if not jobs:
-        return _build_result([], [], "empty", llm_shortlisted_jobs=0, gemini_reviewed_jobs=0)
+        return _build_result(
+            [],
+            [],
+            "empty",
+            llm_shortlisted_jobs=0,
+            gemini_reviewed_jobs=0,
+        )
 
     if not gemini_rerank_enabled():
         max_semantic_email_jobs = max(
@@ -761,21 +1044,36 @@ def rerank_jobs_with_gemini(
             gemini_reviewed_jobs=0,
             review_error=error_message,
             review_error_stage="client_setup",
+            audit_rows=_gemini_failure_audit_rows(
+                candidate_jobs,
+                "gemini_client_setup_failed_not_seen",
+                "client_setup",
+                error_message,
+                "client_setup",
+            ),
         )
 
     if client is None:
+        error_message = "Gemini API key is missing."
         return _build_result(
             [],
             [],
             "gemini_failed",
             llm_shortlisted_jobs=0,
             gemini_reviewed_jobs=0,
-            review_error="Gemini API key is missing.",
+            review_error=error_message,
             review_error_stage="client_setup",
+            audit_rows=_gemini_failure_audit_rows(
+                candidate_jobs,
+                "gemini_client_setup_failed_not_seen",
+                "client_setup",
+                error_message,
+                "client_setup",
+            ),
         )
 
     try:
-        screened_candidates = _run_batch_screening(
+        screened_candidates, pass_one_rejections = _run_batch_screening(
             candidate_jobs,
             recipient_profile,
             client,
@@ -798,19 +1096,32 @@ def rerank_jobs_with_gemini(
             gemini_reviewed_jobs=0,
             review_error=error_message,
             review_error_stage="batch_screening",
+            audit_rows=_gemini_failure_audit_rows(
+                candidate_jobs,
+                "gemini_batch_failed_not_seen",
+                "gemini_pass1",
+                error_message,
+                "batch_screening",
+            ),
         )
 
     if not screened_candidates:
+        audit_rows = _pass_one_rejection_audit_rows(
+            pass_one_rejections,
+            "gemini_pass1_rejected_seen",
+            seen_recorded=True,
+        )
         return _build_result(
             [],
             candidate_jobs,
             "gemini",
             llm_shortlisted_jobs=0,
             gemini_reviewed_jobs=len(candidate_jobs),
+            audit_rows=audit_rows,
         )
 
     try:
-        final_shortlist = _run_final_rerank(
+        final_shortlist, pass_two_rejections = _run_final_rerank(
             screened_candidates,
             recipient_profile,
             client,
@@ -831,12 +1142,24 @@ def rerank_jobs_with_gemini(
             gemini_reviewed_jobs=0,
             review_error=error_message,
             review_error_stage="final_rerank",
+            audit_rows=_final_failure_audit_rows(
+                pass_one_rejections,
+                screened_candidates,
+                error_message,
+            ),
         )
 
+    audit_rows = _successful_gemini_audit_rows(
+        pass_one_rejections,
+        screened_candidates,
+        final_shortlist,
+        pass_two_rejections,
+    )
     return _build_result(
         _strip_internal_fields(final_shortlist),
         candidate_jobs,
         "gemini",
         llm_shortlisted_jobs=len(final_shortlist),
         gemini_reviewed_jobs=len(candidate_jobs),
+        audit_rows=audit_rows,
     )

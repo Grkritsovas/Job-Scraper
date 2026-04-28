@@ -27,6 +27,7 @@ DEFAULT_JUNIOR_BOOST_TERMS = (
     "entry level",
     "entry-level",
 )
+HARD_FILTER_AUDIT_LIMIT_PER_REASON = 30
 
 SALARY_RANGE_PATTERNS = [
     re.compile(
@@ -292,6 +293,45 @@ def apply_salary_penalty(job, ranking_score, recipient_profile):
     return ranking_score - penalty, salary_upper_bound, penalty
 
 
+def _base_audit_row(job, review_family, classification, stage):
+    return {
+        "job_url": job.get("url", ""),
+        "source_type": job.get("source", ""),
+        "target_value": job.get("target_value", ""),
+        "company_name": job.get("company", ""),
+        "title": job.get("title", ""),
+        "location": job.get("location", ""),
+        "review_family": review_family,
+        "classification": classification,
+        "stage": stage,
+    }
+
+
+def _semantic_audit_row(
+    job,
+    classification,
+    min_top_score,
+    semantic_rank=None,
+):
+    return {
+        **_base_audit_row(
+            job,
+            "semantic",
+            classification,
+            "semantic_ranking",
+        ),
+        "semantic_rank": semantic_rank,
+        "semantic_score": job.get("ranking_score"),
+        "semantic_threshold": min_top_score,
+        "semantic_top_profile": job.get("top_profile"),
+        "semantic_second_profile": job.get("second_profile"),
+        "semantic_fit_summary": job.get("fit_summary"),
+        "title_boost_multiplier": job.get("title_boost_multiplier"),
+        "salary_upper_bound_gbp": job.get("salary_upper_bound_gbp"),
+        "salary_penalty_applied": job.get("salary_penalty_applied"),
+    }
+
+
 def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
     matcher = matcher or get_profile_matcher()
     profile_specs = build_profile_specs(recipient_profile)
@@ -305,8 +345,10 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
         "below_threshold_jobs": 0,
         "ranked_jobs": 0,
         "hard_filter_reasons": {},
+        "audit_rows": [],
     }
     hard_filter_reasons = Counter()
+    hard_filter_audit_counts = Counter()
 
     for job in jobs:
         hard_filter_reason = get_hard_filter_reason(
@@ -320,6 +362,22 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
         if hard_filter_reason is not None:
             stats["hard_filtered_jobs"] += 1
             hard_filter_reasons[hard_filter_reason] += 1
+            if (
+                hard_filter_audit_counts[hard_filter_reason]
+                < HARD_FILTER_AUDIT_LIMIT_PER_REASON
+            ):
+                stats["audit_rows"].append(
+                    {
+                        **_base_audit_row(
+                            job,
+                            "hard_filter",
+                            "hard_filtered",
+                            "hard_filter",
+                        ),
+                        "hard_filter_reason": hard_filter_reason,
+                    }
+                )
+                hard_filter_audit_counts[hard_filter_reason] += 1
             continue
 
         match_text = build_matching_text(
@@ -340,6 +398,20 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
         )
         if ranking_score < min_top_score:
             stats["below_threshold_jobs"] += 1
+            stats["audit_rows"].append(
+                _semantic_audit_row(
+                    {
+                        **job,
+                        **score_data,
+                "ranking_score": ranking_score,
+                "semantic_threshold": min_top_score,
+                "salary_upper_bound_gbp": salary_upper_bound,
+                "salary_penalty_applied": salary_penalty_applied,
+            },
+                    "semantic_below_threshold",
+                    min_top_score,
+                )
+            )
             continue
 
         ranked_jobs.append(
@@ -363,6 +435,16 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
         ),
         reverse=True,
     )
+    for rank_position, job in enumerate(ranked_jobs, start=1):
+        job["semantic_rank"] = rank_position
+        stats["audit_rows"].append(
+            _semantic_audit_row(
+                job,
+                "semantic_above_threshold",
+                min_top_score,
+                semantic_rank=rank_position,
+            )
+        )
     stats["hard_filter_reasons"] = dict(hard_filter_reasons)
     if return_stats:
         return ranked_jobs, stats

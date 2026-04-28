@@ -33,12 +33,16 @@ class FakeStorage:
     def __init__(self, seen_urls):
         self._seen_urls = set(seen_urls)
         self.stored = []
+        self.audit_rows = []
 
     def load_seen_urls(self, recipient_id):
         return set(self._seen_urls)
 
     def store_seen_jobs(self, recipient_id, jobs):
         self.stored.append((recipient_id, list(jobs)))
+
+    def store_review_audit_rows(self, recipient_id, run_id, rows):
+        self.audit_rows.append((recipient_id, run_id, list(rows)))
 
 
 class FakeDiagnostics:
@@ -214,7 +218,7 @@ class RunAllTests(unittest.TestCase):
         self.assertEqual("george", recipient_id)
         self.assertEqual(3, summary["input_jobs"])
         self.assertEqual(1, summary["seen_skipped_jobs"])
-        self.assertEqual(2, summary["unseen_jobs"])
+        self.assertEqual(2, summary["ranked_jobs_passed_to_review"])
         self.assertEqual(1, summary["recipient_seen_urls"])
 
     def test_process_recipient_sends_digest_and_stores_reviewed_jobs(self):
@@ -228,6 +232,14 @@ class RunAllTests(unittest.TestCase):
             "llm_shortlisted_jobs": 1,
             "gemini_reviewed_jobs": 2,
             "review_error": None,
+            "audit_rows": [
+                {
+                    "job_url": "https://example.com/job-1",
+                    "review_family": "gemini",
+                    "classification": "gemini_pass2_approved_sent_seen",
+                    "stage": "gemini_pass2",
+                }
+            ],
         }
 
         with (
@@ -239,6 +251,7 @@ class RunAllTests(unittest.TestCase):
                 [make_job(1), make_job(2)],
                 storage,
                 diagnostics,
+                run_id="test-run",
             )
 
         self.assertEqual(review_result, result)
@@ -249,6 +262,10 @@ class RunAllTests(unittest.TestCase):
         self.assertEqual(
             [("george", review_result["reviewed_jobs"])],
             storage.stored,
+        )
+        self.assertEqual(
+            [("george", "test-run", review_result["audit_rows"])],
+            storage.audit_rows,
         )
 
     def test_recipient_worker_count_uses_code_cap_and_hard_max(self):

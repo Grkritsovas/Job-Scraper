@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import uuid
 
 from config.recipient_profiles import load_recipient_profiles
 from config.target_config import load_configured_targets
@@ -42,6 +43,11 @@ def build_parser():
 
 def sponsor_aware_profiles(recipient_profiles):
     return any(profile.get("use_sponsor_lookup", False) for profile in recipient_profiles)
+
+
+def build_run_id():
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{timestamp}-{uuid.uuid4().hex[:8]}"
 
 
 def collect_all_jobs(targets, diagnostics):
@@ -127,14 +133,19 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
         recipient_profile,
         return_stats=True,
     )
+    ranking_audit_rows = ranking_stats.pop("audit_rows", [])
     review_result = rerank_jobs_with_gemini(ranked_jobs, recipient_profile)
+    review_result["audit_rows"] = build_review_audit_rows(
+        ranking_audit_rows,
+        review_result,
+    )
     diagnostics.record_recipient_summary(
         recipient_profile["id"],
         {
             **ranking_stats,
             "input_jobs": len(candidates),
             "seen_skipped_jobs": len(candidates) - len(unseen_candidates),
-            "unseen_jobs": len(ranked_jobs),
+            "ranked_jobs_passed_to_review": len(ranked_jobs),
             "review_mode": review_result["review_mode"],
             "reviewed_jobs": len(review_result["reviewed_jobs"]),
             "llm_shortlisted_jobs": review_result.get("llm_shortlisted_jobs"),
@@ -145,6 +156,50 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
         },
     )
     return review_result
+
+
+def build_review_audit_rows(ranking_audit_rows, review_result):
+    review_audit_rows = list(review_result.get("audit_rows") or [])
+    review_audit_urls = {
+        row.get("job_url")
+        for row in review_audit_rows
+        if row.get("job_url")
+    }
+    semantic_sent_urls = {
+        job.get("url")
+        for job in (review_result.get("jobs_to_send") or [])
+        if job.get("url")
+    }
+    review_mode = review_result.get("review_mode", "")
+    merged_rows = []
+
+    for row in ranking_audit_rows:
+        job_url = row.get("job_url")
+        classification = row.get("classification")
+        if (
+            classification == "semantic_above_threshold"
+            and job_url in review_audit_urls
+        ):
+            continue
+
+        if classification == "semantic_above_threshold":
+            metadata = dict(row.get("metadata") or {})
+            if review_mode == "semantic":
+                selected = job_url in semantic_sent_urls
+                metadata["semantic_selected_for_digest"] = selected
+                row = {
+                    **row,
+                    "metadata": metadata,
+                    "sent": selected,
+                    "seen_recorded": selected,
+                }
+            elif review_mode in {"gemini", "gemini_failed"}:
+                metadata["selected_for_gemini"] = False
+                row = {**row, "metadata": metadata}
+
+        merged_rows.append(row)
+
+    return merged_rows + review_audit_rows
 
 
 def send_digest(recipient_profile, jobs):
@@ -181,7 +236,8 @@ def recipient_worker_count(recipient_profiles):
     return min(len(recipient_profiles), configured)
 
 
-def process_recipient(recipient_profile, candidates, storage, diagnostics):
+def process_recipient(recipient_profile, candidates, storage, diagnostics, run_id=None):
+    run_id = run_id or build_run_id()
     review_result = select_jobs_for_recipient(
         candidates,
         recipient_profile,
@@ -194,10 +250,17 @@ def process_recipient(recipient_profile, candidates, storage, diagnostics):
         send_digest(recipient_profile, jobs_to_send)
     if reviewed_jobs:
         storage.store_seen_jobs(recipient_profile["id"], reviewed_jobs)
+    if review_result.get("audit_rows") and hasattr(storage, "store_review_audit_rows"):
+        storage.store_review_audit_rows(
+            recipient_profile["id"],
+            run_id,
+            review_result["audit_rows"],
+        )
     return review_result
 
 
-def process_recipients(recipient_profiles, candidates, storage, diagnostics):
+def process_recipients(recipient_profiles, candidates, storage, diagnostics, run_id=None):
+    run_id = run_id or build_run_id()
     worker_count = recipient_worker_count(recipient_profiles)
     if worker_count == 1:
         return [
@@ -206,6 +269,7 @@ def process_recipients(recipient_profiles, candidates, storage, diagnostics):
                 candidates,
                 storage,
                 diagnostics,
+                run_id,
             )
             for recipient_profile in recipient_profiles
         ]
@@ -219,6 +283,7 @@ def process_recipients(recipient_profiles, candidates, storage, diagnostics):
                 candidates,
                 storage,
                 diagnostics,
+                run_id,
             ): recipient_profile["id"]
             for recipient_profile in recipient_profiles
         }
@@ -264,9 +329,11 @@ def build_run_snapshot(
     recipient_results,
     run_summary,
     diagnostics,
+    run_id=None,
 ):
     return {
         "schema_version": RUN_SNAPSHOT_SCHEMA_VERSION,
+        "run_id": run_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "candidates": candidates,
         "enriched_candidates": enriched_candidates,
@@ -292,6 +359,7 @@ def write_run_snapshot(path, snapshot):
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    run_id = build_run_id()
     require_database_in_github_actions()
 
     storage = create_storage()
@@ -317,6 +385,7 @@ def main(argv=None):
         enriched_candidates,
         storage,
         diagnostics,
+        run_id,
     )
     run_summary = build_run_summary(
         candidates,
@@ -336,6 +405,7 @@ def main(argv=None):
                 recipient_results,
                 run_summary,
                 diagnostics,
+                run_id=run_id,
             ),
         )
         print(f"[run_snapshot] path={output_path.resolve()}")

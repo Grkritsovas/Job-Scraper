@@ -26,6 +26,7 @@ The intended scale is a small admin-run setup, roughly up to 8 recipients per ru
 - ranks jobs separately for each recipient profile with semantic matching
 - optionally reranks top semantic matches with Gemini for stricter final selection
 - skips jobs already reviewed for that recipient
+- stores compact review audit records for semantic and Gemini decisions
 - sends grouped email digests
 <p align="center">
   <img src="examples/job_scraper_workflow.gif" alt="Job scraper workflow animation" width="512">
@@ -76,11 +77,11 @@ Recipient profiles are database-only. The app does not read `recipient_profiles.
 - `python manage_targets.py list ashby`
 - `python tools/validate_recipient_profiles.py --enabled-only`
 - `python run_all.py --save-run runs/latest.json`
-- `python tools/replay_run.py runs/latest.json --recipient george`
+- `python tools/replay_run.py runs/latest.json --recipient demo-recipient`
 
 ## Database
 
-`app_config.recipient_profiles` stores recipient config, and `recipient_seen_jobs` stores seen job URLs per recipient profile.
+`app_config.recipient_profiles` stores recipient config, `recipient_seen_jobs` stores seen job URLs per recipient profile, and `recipient_review_audit` stores compact semantic/Gemini review audit rows.
 
 ## Acknowledgements
 

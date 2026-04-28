@@ -116,7 +116,7 @@ class ScrapeDiagnostics:
                 f"hard_filtered={payload.get('hard_filtered_jobs', 0)} "
                 f"below_threshold={payload.get('below_threshold_jobs', 0)} "
                 f"ranked={payload.get('ranked_jobs', 0)} "
-                f"unseen={payload.get('unseen_jobs', 0)} "
+                f"ranked_jobs_passed_to_review={payload.get('ranked_jobs_passed_to_review', 0)} "
                 f"review_mode={review_mode}"
                 f"{reviewed_suffix}"
                 f"{llm_suffix}"

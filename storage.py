@@ -22,6 +22,112 @@ SEEN_JOBS_SCHEMA_STATEMENTS = [
     """,
 ]
 
+REVIEW_AUDIT_SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS recipient_review_audit (
+        audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL,
+        recipient_id TEXT NOT NULL,
+        job_url TEXT NOT NULL,
+        source_type TEXT,
+        target_value TEXT,
+        company_name TEXT,
+        title TEXT,
+        location TEXT,
+        review_family TEXT NOT NULL,
+        classification TEXT NOT NULL,
+        stage TEXT,
+        seen_recorded INTEGER NOT NULL DEFAULT 0,
+        sent INTEGER NOT NULL DEFAULT 0,
+        hard_filter_reason TEXT,
+        semantic_rank INTEGER,
+        semantic_score REAL,
+        semantic_threshold REAL,
+        semantic_top_profile TEXT,
+        semantic_second_profile TEXT,
+        semantic_fit_summary TEXT,
+        title_boost_multiplier REAL,
+        salary_upper_bound_gbp REAL,
+        salary_penalty_applied REAL,
+        gemini_pass1_score INTEGER,
+        gemini_pass2_score INTEGER,
+        gemini_matched_profile TEXT,
+        gemini_reason TEXT,
+        supporting_evidence_json TEXT,
+        mismatch_evidence_json TEXT,
+        review_error_stage TEXT,
+        review_error TEXT,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_recipient_review_audit_recipient_created
+    ON recipient_review_audit (recipient_id, created_at)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_recipient_review_audit_run
+    ON recipient_review_audit (run_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_recipient_review_audit_classification
+    ON recipient_review_audit (classification)
+    """,
+]
+
+POSTGRES_REVIEW_AUDIT_SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS recipient_review_audit (
+        audit_id BIGSERIAL PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        recipient_id TEXT NOT NULL,
+        job_url TEXT NOT NULL,
+        source_type TEXT,
+        target_value TEXT,
+        company_name TEXT,
+        title TEXT,
+        location TEXT,
+        review_family TEXT NOT NULL,
+        classification TEXT NOT NULL,
+        stage TEXT,
+        seen_recorded BOOLEAN NOT NULL DEFAULT FALSE,
+        sent BOOLEAN NOT NULL DEFAULT FALSE,
+        hard_filter_reason TEXT,
+        semantic_rank INTEGER,
+        semantic_score DOUBLE PRECISION,
+        semantic_threshold DOUBLE PRECISION,
+        semantic_top_profile TEXT,
+        semantic_second_profile TEXT,
+        semantic_fit_summary TEXT,
+        title_boost_multiplier DOUBLE PRECISION,
+        salary_upper_bound_gbp DOUBLE PRECISION,
+        salary_penalty_applied DOUBLE PRECISION,
+        gemini_pass1_score INTEGER,
+        gemini_pass2_score INTEGER,
+        gemini_matched_profile TEXT,
+        gemini_reason TEXT,
+        supporting_evidence_json JSONB,
+        mismatch_evidence_json JSONB,
+        review_error_stage TEXT,
+        review_error TEXT,
+        metadata_json JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_recipient_review_audit_recipient_created
+    ON recipient_review_audit (recipient_id, created_at)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_recipient_review_audit_run
+    ON recipient_review_audit (run_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_recipient_review_audit_classification
+    ON recipient_review_audit (classification)
+    """,
+]
+
 SQLITE_RECIPIENT_PROFILE_SCHEMA_STATEMENTS = [
     """
     CREATE TABLE IF NOT EXISTS recipient_profiles (
@@ -44,6 +150,9 @@ SQLITE_RECIPIENT_PROFILE_SCHEMA_STATEMENTS = [
     )
     """,
 ]
+
+DEFAULT_AUDIT_KEEP_ROWS = 1000
+DEFAULT_AUDIT_HIGH_WATER_ROWS = 1500
 
 POSTGRES_RECIPIENT_PROFILE_SCHEMA_STATEMENTS = [
     "CREATE SCHEMA IF NOT EXISTS app_config",
@@ -287,6 +396,156 @@ class Storage:
         finally:
             connection.close()
 
+    def store_review_audit_rows(self, recipient_id, run_id, audit_rows):
+        rows = [
+            self._normalize_review_audit_row(recipient_id, run_id, row)
+            for row in audit_rows
+            if row.get("job_url")
+        ]
+        if not rows:
+            return
+
+        columns = [
+            "run_id",
+            "recipient_id",
+            "job_url",
+            "source_type",
+            "target_value",
+            "company_name",
+            "title",
+            "location",
+            "review_family",
+            "classification",
+            "stage",
+            "seen_recorded",
+            "sent",
+            "hard_filter_reason",
+            "semantic_rank",
+            "semantic_score",
+            "semantic_threshold",
+            "semantic_top_profile",
+            "semantic_second_profile",
+            "semantic_fit_summary",
+            "title_boost_multiplier",
+            "salary_upper_bound_gbp",
+            "salary_penalty_applied",
+            "gemini_pass1_score",
+            "gemini_pass2_score",
+            "gemini_matched_profile",
+            "gemini_reason",
+            "supporting_evidence_json",
+            "mismatch_evidence_json",
+            "review_error_stage",
+            "review_error",
+            "metadata_json",
+        ]
+
+        if self.backend == "sqlite":
+            placeholders = ", ".join("?" for _column in columns)
+            connection = self._connect_sqlite()
+            try:
+                connection.executemany(
+                    f"""
+                    INSERT INTO recipient_review_audit (
+                        {", ".join(columns)}
+                    )
+                    VALUES ({placeholders})
+                    """,
+                    [tuple(row[column] for column in columns) for row in rows],
+                )
+                connection.commit()
+            finally:
+                connection.close()
+            self.prune_review_audit_rows()
+            return
+
+        connection = self._connect_postgres()
+        try:
+            with connection.cursor() as cursor:
+                for row in rows:
+                    cursor.execute(
+                        f"""
+                        INSERT INTO recipient_review_audit (
+                            {", ".join(columns)}
+                        )
+                        VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s::jsonb
+                        )
+                        """,
+                        tuple(row[column] for column in columns),
+                    )
+            connection.commit()
+        finally:
+            connection.close()
+        self.prune_review_audit_rows()
+
+    def prune_review_audit_rows(self, keep_rows=None, high_water_rows=None):
+        keep_rows, high_water_rows = self._review_audit_retention_limits(
+            keep_rows,
+            high_water_rows,
+        )
+        row_count = self._review_audit_row_count()
+        if row_count <= high_water_rows:
+            return 0
+
+        delete_count = row_count - keep_rows
+        if delete_count <= 0:
+            return 0
+
+        if self.backend == "sqlite":
+            connection = self._connect_sqlite()
+            try:
+                cursor = connection.execute(
+                    """
+                    DELETE FROM recipient_review_audit
+                    WHERE audit_id IN (
+                        SELECT audit_id
+                        FROM recipient_review_audit
+                        ORDER BY created_at ASC, audit_id ASC
+                        LIMIT ?
+                    )
+                    """,
+                    (delete_count,),
+                )
+                connection.commit()
+                return cursor.rowcount
+            finally:
+                connection.close()
+
+        connection = self._connect_postgres()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    DELETE FROM recipient_review_audit
+                    WHERE audit_id IN (
+                        SELECT audit_id
+                        FROM recipient_review_audit
+                        ORDER BY created_at ASC, audit_id ASC
+                        LIMIT %s
+                    )
+                    """,
+                    (delete_count,),
+                )
+                deleted_rows = cursor.rowcount
+            connection.commit()
+            return deleted_rows
+        finally:
+            connection.close()
+
+    def load_review_audit_rows(self):
+        return self._fetch_all(
+            """
+            SELECT *
+            FROM recipient_review_audit
+            ORDER BY audit_id
+            """,
+            (),
+        )
+
     def _fetch_all(self, query, params):
         if self.backend == "sqlite":
             connection = self._connect_sqlite()
@@ -311,6 +570,8 @@ class Storage:
         try:
             for statement in SEEN_JOBS_SCHEMA_STATEMENTS:
                 connection.execute(statement)
+            for statement in REVIEW_AUDIT_SCHEMA_STATEMENTS:
+                connection.execute(statement)
             for statement in SQLITE_RECIPIENT_PROFILE_SCHEMA_STATEMENTS:
                 connection.execute(statement)
             connection.commit()
@@ -322,6 +583,8 @@ class Storage:
         try:
             with connection.cursor() as cursor:
                 for statement in SEEN_JOBS_SCHEMA_STATEMENTS:
+                    cursor.execute(statement)
+                for statement in POSTGRES_REVIEW_AUDIT_SCHEMA_STATEMENTS:
                     cursor.execute(statement)
                 for statement in POSTGRES_RECIPIENT_PROFILE_SCHEMA_STATEMENTS:
                     cursor.execute(statement)
@@ -364,6 +627,87 @@ class Storage:
 
     def _true_literal(self):
         return "1" if self.backend == "sqlite" else "TRUE"
+
+    def _review_audit_row_count(self):
+        rows = self._fetch_all(
+            "SELECT COUNT(*) AS row_count FROM recipient_review_audit",
+            (),
+        )
+        return int(rows[0]["row_count"]) if rows else 0
+
+    def _review_audit_retention_limits(self, keep_rows=None, high_water_rows=None):
+        keep = self._safe_int_env(
+            "JOB_SCRAPER_AUDIT_KEEP_ROWS",
+            DEFAULT_AUDIT_KEEP_ROWS,
+            override=keep_rows,
+        )
+        high_water = self._safe_int_env(
+            "JOB_SCRAPER_AUDIT_HIGH_WATER_ROWS",
+            DEFAULT_AUDIT_HIGH_WATER_ROWS,
+            override=high_water_rows,
+        )
+        keep = max(1, keep)
+        high_water = max(keep, high_water)
+        return keep, high_water
+
+    def _normalize_review_audit_row(self, recipient_id, run_id, row):
+        metadata = row.get("metadata") or {}
+        return {
+            "run_id": run_id,
+            "recipient_id": recipient_id,
+            "job_url": row.get("job_url", ""),
+            "source_type": row.get("source_type", ""),
+            "target_value": row.get("target_value", ""),
+            "company_name": row.get("company_name", ""),
+            "title": row.get("title", ""),
+            "location": row.get("location", ""),
+            "review_family": row.get("review_family", ""),
+            "classification": row.get("classification", ""),
+            "stage": row.get("stage", ""),
+            "seen_recorded": bool(row.get("seen_recorded", False)),
+            "sent": bool(row.get("sent", False)),
+            "hard_filter_reason": row.get("hard_filter_reason"),
+            "semantic_rank": row.get("semantic_rank"),
+            "semantic_score": row.get("semantic_score"),
+            "semantic_threshold": row.get("semantic_threshold"),
+            "semantic_top_profile": row.get("semantic_top_profile"),
+            "semantic_second_profile": row.get("semantic_second_profile"),
+            "semantic_fit_summary": row.get("semantic_fit_summary"),
+            "title_boost_multiplier": row.get("title_boost_multiplier"),
+            "salary_upper_bound_gbp": row.get("salary_upper_bound_gbp"),
+            "salary_penalty_applied": row.get("salary_penalty_applied"),
+            "gemini_pass1_score": row.get("gemini_pass1_score"),
+            "gemini_pass2_score": row.get("gemini_pass2_score"),
+            "gemini_matched_profile": row.get("gemini_matched_profile"),
+            "gemini_reason": row.get("gemini_reason"),
+            "supporting_evidence_json": self._json_dump(
+                row.get("supporting_evidence") or []
+            ),
+            "mismatch_evidence_json": self._json_dump(
+                row.get("mismatch_evidence") or []
+            ),
+            "review_error_stage": row.get("review_error_stage"),
+            "review_error": row.get("review_error"),
+            "metadata_json": self._json_dump(metadata),
+        }
+
+    @staticmethod
+    def _json_dump(value):
+        return json.dumps(value, ensure_ascii=True)
+
+    @staticmethod
+    def _safe_int_env(name, default_value, override=None):
+        if override is not None:
+            return int(override)
+
+        raw_value = os.getenv(name, "").strip()
+        if not raw_value:
+            return int(default_value)
+
+        try:
+            return int(raw_value)
+        except ValueError:
+            return int(default_value)
 
     @staticmethod
     def _load_json_field(value):

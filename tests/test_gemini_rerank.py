@@ -194,6 +194,22 @@ class GeminiRerankTests(unittest.TestCase):
             ["Graduate Data Analyst", "Build backend APIs in Python"],
             reranked[0]["supporting_evidence"],
         )
+        audit_by_url = {
+            row["job_url"]: row
+            for row in result["audit_rows"]
+        }
+        self.assertEqual(
+            "gemini_pass1_rejected_seen",
+            audit_by_url["https://example.com/job-1"]["classification"],
+        )
+        self.assertTrue(audit_by_url["https://example.com/job-1"]["seen_recorded"])
+        self.assertEqual(
+            "gemini_pass2_approved_sent_seen",
+            audit_by_url["https://example.com/job-2"]["classification"],
+        )
+        self.assertTrue(audit_by_url["https://example.com/job-2"]["sent"])
+        self.assertEqual(84, audit_by_url["https://example.com/job-2"]["gemini_pass1_score"])
+        self.assertEqual(88, audit_by_url["https://example.com/job-2"]["gemini_pass2_score"])
 
         first_prompt = client.models.calls[0]["contents"]
         second_prompt = client.models.calls[1]["contents"]
@@ -266,6 +282,58 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertIn('"url": "https://example.com/job-11"', client.models.calls[1]["contents"])
         self.assertNotIn('"url": "https://example.com/job-12"', client.models.calls[1]["contents"])
 
+    def test_rerank_audits_pass_two_rejections_as_seen(self):
+        jobs = [make_job(1)]
+        recipient_profile = {
+            "semantic_profiles": ["swe"],
+            "semantic_profile_texts": {},
+            "cv_summary": "",
+        }
+        client = FakeClient(
+            [
+                {
+                    "candidates": [
+                        {
+                            "job_url": "https://example.com/job-1",
+                            "matched_profile": "SWE",
+                            "fit_score": 78,
+                            "why_apply": "Possible junior engineering fit.",
+                            "supporting_evidence": ["Software Engineer 1"],
+                            "mismatch_evidence": [],
+                        }
+                    ],
+                    "rejected_jobs": [],
+                },
+                {
+                    "shortlisted_jobs": [],
+                    "rejected_jobs": [
+                        {
+                            "job_url": "https://example.com/job-1",
+                            "rejection_reason": "Weaker than the final shortlist.",
+                            "mismatch_evidence": ["Possible junior engineering fit."],
+                        }
+                    ],
+                },
+            ]
+        )
+
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True):
+            result = rerank_jobs_with_gemini(
+                jobs,
+                recipient_profile,
+                client=client,
+                top_n=1,
+                batch_size=10,
+            )
+
+        self.assertEqual([], result["jobs_to_send"])
+        self.assertEqual(1, len(result["reviewed_jobs"]))
+        self.assertEqual(
+            ["gemini_pass1_approved_pass2_rejected_seen"],
+            [row["classification"] for row in result["audit_rows"]],
+        )
+        self.assertTrue(result["audit_rows"][0]["seen_recorded"])
+
     def test_rerank_returns_no_jobs_if_final_pass_fails(self):
         jobs = [make_job(1)]
         recipient_profile = {
@@ -320,6 +388,11 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertEqual(0, result["gemini_reviewed_jobs"])
         self.assertEqual("final_rerank", result["review_error_stage"])
         self.assertIn("final pass failed", result["review_error"])
+        self.assertEqual(
+            ["gemini_pass1_approved_final_failed_not_seen"],
+            [row["classification"] for row in result["audit_rows"]],
+        )
+        self.assertFalse(result["audit_rows"][0]["seen_recorded"])
 
     def test_rerank_records_batch_screening_failure_stage(self):
         jobs = [make_job(1)]
@@ -356,6 +429,10 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertEqual("gemini_failed", result["review_mode"])
         self.assertEqual("batch_screening", result["review_error_stage"])
         self.assertIn("503 UNAVAILABLE", result["review_error"])
+        self.assertEqual(
+            ["gemini_batch_failed_not_seen"],
+            [row["classification"] for row in result["audit_rows"]],
+        )
 
     def test_rerank_retries_retryable_batch_failure_and_recovers(self):
         jobs = [make_job(1)]

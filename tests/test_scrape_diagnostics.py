@@ -41,7 +41,7 @@ class ScrapeDiagnosticsTests(unittest.TestCase):
                     "hard_filtered_jobs": 3,
                     "below_threshold_jobs": 2,
                     "ranked_jobs": 7,
-                    "unseen_jobs": 7,
+                    "ranked_jobs_passed_to_review": 7,
                     "review_mode": "gemini_failed",
                     "reviewed_jobs": 0,
                     "llm_shortlisted_jobs": 0,
@@ -55,6 +55,7 @@ class ScrapeDiagnosticsTests(unittest.TestCase):
 
         line = print_mock.call_args.args[0]
         self.assertIn("review_mode=gemini_failed", line)
+        self.assertIn("ranked_jobs_passed_to_review=7", line)
         self.assertIn("review_error_stage=batch_screening", line)
         self.assertIn('review_error="503 UNAVAILABLE temporary outage', line)
         self.assertLess(len(line), 500)

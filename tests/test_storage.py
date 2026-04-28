@@ -88,6 +88,49 @@ class StorageTests(unittest.TestCase):
         self.assertEqual("george@example.com", loaded[0]["delivery"]["email"])
         self.assertEqual(2, loaded[0]["job_preferences"]["target_seniority"]["max_explicit_years"])
 
+    def test_review_audit_rows_round_trip_and_retention(self):
+        db_path = (self.test_dir / "audit.db").resolve()
+        storage = create_storage(f"sqlite:///{db_path}")
+        storage.ensure_schema()
+
+        rows = [
+            {
+                "job_url": f"https://example.com/job-{index}",
+                "source_type": "ashby",
+                "target_value": "example",
+                "company_name": "Example",
+                "title": f"Job {index}",
+                "location": "London",
+                "review_family": "semantic",
+                "classification": "semantic_above_threshold",
+                "stage": "semantic_ranking",
+                "semantic_rank": index,
+                "semantic_score": 0.5 + index / 100,
+                "semantic_threshold": 0.42,
+                "supporting_evidence": ["Python"],
+                "metadata": {"selected_for_gemini": False},
+            }
+            for index in range(1, 7)
+        ]
+
+        storage.store_review_audit_rows("recipient-a", "run-1", rows)
+        deleted = storage.prune_review_audit_rows(keep_rows=3, high_water_rows=5)
+        loaded = storage.load_review_audit_rows()
+
+        self.assertEqual(3, deleted)
+        self.assertEqual(3, len(loaded))
+        self.assertEqual(
+            [
+                "https://example.com/job-4",
+                "https://example.com/job-5",
+                "https://example.com/job-6",
+            ],
+            [row["job_url"] for row in loaded],
+        )
+        self.assertEqual("recipient-a", loaded[0]["recipient_id"])
+        self.assertEqual("run-1", loaded[0]["run_id"])
+        self.assertEqual("semantic_above_threshold", loaded[0]["classification"])
+
 
 if __name__ == "__main__":
     unittest.main()
