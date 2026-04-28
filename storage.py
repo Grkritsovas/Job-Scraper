@@ -233,6 +233,58 @@ class Storage:
             )
         return records
 
+    def load_recipient_profile_versions(self, recipient_id, limit=20):
+        rows = self._fetch_all(
+            self._sql(
+                f"""
+                SELECT version_id, recipient_id, email, enabled, config_json, saved_at
+                FROM {self._recipient_profile_versions_table_name()}
+                WHERE recipient_id = {{placeholder}}
+                ORDER BY saved_at DESC, version_id DESC
+                LIMIT {{placeholder}}
+                """
+            ),
+            (recipient_id, max(1, int(limit))),
+        )
+        versions = []
+        for row in rows:
+            parsed = self._load_json_field(row.get("config_json"))
+            if not isinstance(parsed, dict):
+                continue
+            versions.append(
+                {
+                    **row,
+                    "enabled": self._coerce_bool(row.get("enabled")),
+                    "config": parsed,
+                }
+            )
+        return versions
+
+    def load_recipient_profile_version(self, recipient_id, version_id):
+        rows = self._fetch_all(
+            self._sql(
+                f"""
+                SELECT version_id, recipient_id, email, enabled, config_json, saved_at
+                FROM {self._recipient_profile_versions_table_name()}
+                WHERE recipient_id = {{placeholder}}
+                  AND version_id = {{placeholder}}
+                """
+            ),
+            (recipient_id, version_id),
+        )
+        if not rows:
+            return None
+
+        row = rows[0]
+        parsed = self._load_json_field(row.get("config_json"))
+        if not isinstance(parsed, dict):
+            return None
+        return {
+            **row,
+            "enabled": self._coerce_bool(row.get("enabled")),
+            "config": parsed,
+        }
+
     def upsert_recipient_profile_configs(self, rows):
         if not rows:
             return
@@ -687,6 +739,11 @@ class Storage:
         if self.backend == "sqlite":
             return "recipient_profiles"
         return "app_config.recipient_profiles"
+
+    def _recipient_profile_versions_table_name(self):
+        if self.backend == "sqlite":
+            return "recipient_profile_versions"
+        return "app_config.recipient_profile_versions"
 
     def _true_literal(self):
         return "1" if self.backend == "sqlite" else "TRUE"

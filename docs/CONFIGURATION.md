@@ -65,7 +65,7 @@ If `DATABASE_URL` is set, `python admin_ui.py` tries that database first. If the
 python admin_ui.py "postgresql://user:password@host:5432/database"
 ```
 
-The UI can edit database-backed recipient profile JSON, validate/normalize it through the runtime profile loader, and browse recent `recipient_review_audit` rows. It does not edit GitHub secrets, local recipient JSON files, or seen-job records.
+The UI can edit database-backed recipient profile JSON, validate/normalize it through the runtime profile loader, compare/restore saved profile versions, and browse recent `recipient_review_audit` rows. It does not edit GitHub secrets, local recipient JSON files, or seen-job records.
 
 ## Review Audit
 

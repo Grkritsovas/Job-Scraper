@@ -54,6 +54,15 @@
               </div>
 
               <div class="status-line" id="profileStatus"></div>
+              <details class="version-panel" id="versionPanel">
+                <summary>Version History</summary>
+                <div class="version-controls">
+                  <select id="profileVersionSelect" aria-label="Profile versions"></select>
+                  <button id="loadVersionButton" type="button">Compare</button>
+                  <button id="restoreVersionButton" type="button">Restore</button>
+                </div>
+                <textarea id="versionPreview" readonly spellcheck="false" aria-label="Selected profile version"></textarea>
+              </details>
               <textarea id="profileEditor" spellcheck="false"></textarea>
             </section>
           </div>

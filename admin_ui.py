@@ -55,6 +55,15 @@ class AdminController:
                 }
         raise AdminApiError("Recipient profile not found.", HTTPStatus.NOT_FOUND)
 
+    def list_profile_versions(self, recipient_id):
+        versions = self.storage.load_recipient_profile_versions(recipient_id, limit=30)
+        return {
+            "versions": [
+                self._profile_version_payload(version)
+                for version in versions
+            ]
+        }
+
     def validate_profile(self, profile):
         row = self._prepare_profile_row(profile)
         return {
@@ -70,6 +79,25 @@ class AdminController:
             "saved": True,
             "profile": row["config"],
             "summary": self._profile_summary(row["config"]),
+        }
+
+    def restore_profile_version(self, recipient_id, version_id):
+        try:
+            version_id = int(version_id)
+        except (TypeError, ValueError) as exc:
+            raise AdminApiError("Profile version id is required.") from exc
+
+        version = self.storage.load_recipient_profile_version(recipient_id, version_id)
+        if not version:
+            raise AdminApiError("Profile version not found.", HTTPStatus.NOT_FOUND)
+
+        row = self._prepare_profile_row(version["config"])
+        self.storage.upsert_recipient_profile_configs([row])
+        return {
+            "restored": True,
+            "profile": row["config"],
+            "summary": self._profile_summary(row["config"]),
+            "restored_version": self._profile_version_payload(version),
         }
 
     def list_audit_rows(self, filters):
@@ -133,6 +161,28 @@ class AdminController:
             "semantic_threshold": matching.get("semantic_threshold"),
             "updated_at": (record or {}).get("updated_at"),
         }
+
+    @classmethod
+    def _profile_version_payload(cls, version):
+        return {
+            "version_id": version.get("version_id"),
+            "recipient_id": version.get("recipient_id"),
+            "email": version.get("email"),
+            "enabled": cls._coerce_bool(version.get("enabled")),
+            "saved_at": version.get("saved_at"),
+            "profile": version.get("config"),
+            "summary": cls._profile_summary(version.get("config") or {}, version),
+        }
+
+    @staticmethod
+    def _coerce_bool(value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int):
+            return value != 0
+        if isinstance(value, str):
+            return value.lower() in {"1", "true", "t", "yes"}
+        return bool(value)
 
     @staticmethod
     def _audit_limit(value):
@@ -273,6 +323,10 @@ def make_handler(controller):
                 return
             if path.startswith("/api/profiles/"):
                 recipient_id = unquote(path.removeprefix("/api/profiles/"))
+                if recipient_id.endswith("/versions"):
+                    recipient_id = recipient_id.removesuffix("/versions")
+                    self._send_json(controller.list_profile_versions(recipient_id))
+                    return
                 self._send_json(controller.get_profile(recipient_id))
                 return
             if path == "/api/audit":
@@ -291,6 +345,17 @@ def make_handler(controller):
                 return
             if parsed.path == "/api/profiles/save":
                 self._send_json(controller.save_profile(payload.get("profile")))
+                return
+            if parsed.path.startswith("/api/profiles/") and parsed.path.endswith("/restore"):
+                recipient_id = unquote(
+                    parsed.path.removeprefix("/api/profiles/").removesuffix("/restore")
+                )
+                self._send_json(
+                    controller.restore_profile_version(
+                        recipient_id,
+                        payload.get("version_id"),
+                    )
+                )
                 return
             self._send_json({"error": "Not found."}, HTTPStatus.NOT_FOUND)
 

@@ -55,6 +55,37 @@ class AdminUiTests(unittest.TestCase):
 
         self.assertIn("must be a string or object", raised.exception.message)
 
+    def test_profile_versions_can_be_listed_and_restored(self):
+        first = self.controller.save_profile(
+            {
+                "id": "demo-recipient",
+                "delivery": {"email": "recipient@example.com"},
+                "candidate": {
+                    "summary": "First summary.",
+                    "target_roles": [{"id": "swe"}],
+                },
+            }
+        )
+        self.controller.save_profile(
+            {
+                **first["profile"],
+                "candidate": {
+                    **first["profile"]["candidate"],
+                    "summary": "Second summary.",
+                },
+            }
+        )
+
+        versions = self.controller.list_profile_versions("demo_recipient")["versions"]
+        restored = self.controller.restore_profile_version(
+            "demo_recipient",
+            versions[-1]["version_id"],
+        )
+
+        self.assertEqual(2, len(versions))
+        self.assertEqual("Second summary.", versions[0]["profile"]["candidate"]["summary"])
+        self.assertEqual("First summary.", restored["profile"]["candidate"]["summary"])
+
     def test_audit_rows_are_filterable_for_the_ui(self):
         self.storage.store_review_audit_rows(
             "demo-recipient",

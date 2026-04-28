@@ -239,6 +239,43 @@ p {
   color: var(--danger);
 }
 
+.version-panel {
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+  padding: 10px;
+}
+
+.version-panel summary {
+  cursor: pointer;
+  color: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.version-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+#versionPreview {
+  width: 100%;
+  min-height: 180px;
+  margin-top: 10px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  color: #303632;
+  background: #f7f9f7;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 #profileEditor {
   flex: 1;
   min-height: 0;
@@ -370,6 +407,7 @@ input {
 
   .profile-layout,
   .filter-bar,
+  .version-controls,
   .audit-row {
     grid-template-columns: 1fr;
   }

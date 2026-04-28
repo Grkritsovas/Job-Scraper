@@ -1,6 +1,7 @@
 const state = {
   profiles: [],
   selectedProfileId: "",
+  versions: [],
 };
 
 const els = {
@@ -11,6 +12,9 @@ const els = {
   profileStatus: document.getElementById("profileStatus"),
   selectedProfileTitle: document.getElementById("selectedProfileTitle"),
   selectedProfileMeta: document.getElementById("selectedProfileMeta"),
+  profileVersionSelect: document.getElementById("profileVersionSelect"),
+  versionPreview: document.getElementById("versionPreview"),
+  versionPanel: document.getElementById("versionPanel"),
   auditCount: document.getElementById("auditCount"),
   auditRecipient: document.getElementById("auditRecipient"),
   auditFamily: document.getElementById("auditFamily"),
@@ -30,6 +34,8 @@ document.getElementById("reloadProfilesButton").addEventListener("click", loadPr
 document.getElementById("validateProfileButton").addEventListener("click", validateProfile);
 document.getElementById("normalizeProfileButton").addEventListener("click", normalizeProfile);
 document.getElementById("saveProfileButton").addEventListener("click", saveProfile);
+document.getElementById("loadVersionButton").addEventListener("click", compareSelectedVersion);
+document.getElementById("restoreVersionButton").addEventListener("click", restoreSelectedVersion);
 document.getElementById("reloadAuditButton").addEventListener("click", loadAudit);
 document.getElementById("auditFilters").addEventListener("change", loadAudit);
 els.auditLimit.addEventListener("input", debounce(loadAudit, 250));
@@ -99,6 +105,7 @@ async function selectProfile(profileId) {
   renderSelectedProfile(payload.summary);
   setProfileStatus("", "");
   renderProfileList();
+  await loadProfileVersions(profileId);
 }
 
 function newProfile() {
@@ -144,8 +151,10 @@ function newProfile() {
     },
   };
   state.selectedProfileId = "";
+  state.versions = [];
   els.profileEditor.value = JSON.stringify(profile, null, 2);
   renderSelectedProfile({ id: "new-recipient", email: "recipient@example.com", target_roles: ["swe"], enabled: true });
+  renderProfileVersions([]);
   setProfileStatus("", "");
   renderProfileList();
 }
@@ -173,7 +182,75 @@ async function saveProfile() {
   renderSelectedProfile(payload.summary);
   setProfileStatus("Saved profile.", "ok");
   await loadProfiles();
+  await loadProfileVersions(state.selectedProfileId);
   await loadAuditOptions();
+}
+
+async function loadProfileVersions(profileId) {
+  if (!profileId) {
+    renderProfileVersions([]);
+    return;
+  }
+  const payload = await apiGet(`/api/profiles/${encodeURIComponent(profileId)}/versions`);
+  state.versions = payload.versions || [];
+  renderProfileVersions(state.versions);
+}
+
+function renderProfileVersions(versions) {
+  els.profileVersionSelect.innerHTML = "";
+  els.versionPreview.value = "";
+  if (!versions.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No saved versions";
+    els.profileVersionSelect.appendChild(option);
+    return;
+  }
+
+  versions.forEach((version) => {
+    const option = document.createElement("option");
+    option.value = version.version_id;
+    option.textContent = `${version.saved_at || "saved"} - version ${version.version_id}`;
+    els.profileVersionSelect.appendChild(option);
+  });
+}
+
+function selectedVersion() {
+  const versionId = els.profileVersionSelect.value;
+  return state.versions.find((version) => String(version.version_id) === String(versionId));
+}
+
+function compareSelectedVersion() {
+  const version = selectedVersion();
+  if (!version) {
+    setProfileStatus("No profile version selected.", "error");
+    return;
+  }
+  els.versionPreview.value = JSON.stringify(version.profile, null, 2);
+  els.versionPanel.open = true;
+  setProfileStatus(`Comparing with version ${version.version_id}.`, "ok");
+}
+
+async function restoreSelectedVersion() {
+  const version = selectedVersion();
+  if (!version || !state.selectedProfileId) {
+    setProfileStatus("No profile version selected.", "error");
+    return;
+  }
+
+  const confirmed = window.confirm(`Restore version ${version.version_id} for ${state.selectedProfileId}?`);
+  if (!confirmed) {
+    return;
+  }
+
+  const payload = await apiPost(`/api/profiles/${encodeURIComponent(state.selectedProfileId)}/restore`, {
+    version_id: version.version_id,
+  });
+  els.profileEditor.value = JSON.stringify(payload.profile, null, 2);
+  renderSelectedProfile(payload.summary);
+  setProfileStatus(`Restored version ${version.version_id}.`, "ok");
+  await loadProfiles();
+  await loadProfileVersions(payload.summary.id);
 }
 
 function readProfileEditor() {

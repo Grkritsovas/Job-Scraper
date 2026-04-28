@@ -92,6 +92,44 @@ class StorageTests(unittest.TestCase):
         self.assertEqual("george@example.com", records[0]["email"])
         self.assertTrue(records[0]["enabled"])
 
+    def test_recipient_profile_versions_can_be_loaded(self):
+        db_path = (self.test_dir / "profile_versions.db").resolve()
+        storage = create_storage(f"sqlite:///{db_path}")
+        storage.ensure_schema()
+
+        first_profile = {
+            "id": "demo-recipient",
+            "delivery": {"email": "recipient@example.com"},
+            "candidate": {
+                "summary": "First summary.",
+                "target_roles": [{"id": "swe"}],
+            },
+        }
+        second_profile = {
+            **first_profile,
+            "candidate": {
+                "summary": "Second summary.",
+                "target_roles": [{"id": "data_science"}],
+            },
+        }
+
+        storage.upsert_recipient_profile_configs(
+            prepare_recipient_profile_db_rows([first_profile])
+        )
+        storage.upsert_recipient_profile_configs(
+            prepare_recipient_profile_db_rows([second_profile])
+        )
+
+        versions = storage.load_recipient_profile_versions("demo_recipient")
+        loaded_version = storage.load_recipient_profile_version(
+            "demo_recipient",
+            versions[-1]["version_id"],
+        )
+
+        self.assertEqual(2, len(versions))
+        self.assertEqual("Second summary.", versions[0]["config"]["candidate"]["summary"])
+        self.assertEqual("First summary.", loaded_version["config"]["candidate"]["summary"])
+
     def test_review_audit_rows_round_trip_and_retention(self):
         db_path = (self.test_dir / "audit.db").resolve()
         storage = create_storage(f"sqlite:///{db_path}")
