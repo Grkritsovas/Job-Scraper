@@ -6,23 +6,73 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 
-SEEN_JOBS_SCHEMA_STATEMENTS = [
+SQLITE_SEEN_JOBS_SCHEMA_STATEMENTS = [
     """
     CREATE TABLE IF NOT EXISTS recipient_seen_jobs (
         recipient_id TEXT NOT NULL,
         job_url TEXT NOT NULL,
-        source_type TEXT NOT NULL,
+        source_type TEXT NOT NULL DEFAULT '',
         target_value TEXT,
         company_name TEXT,
         title TEXT,
         location TEXT,
+        is_seen INTEGER NOT NULL DEFAULT 1,
+        processing_status TEXT NOT NULL DEFAULT 'processed',
+        review_family TEXT,
+        classification TEXT,
+        stage TEXT,
+        run_id TEXT,
+        semantic_rank INTEGER,
+        raw_embedding_score REAL,
+        semantic_score REAL,
+        semantic_threshold REAL,
+        sent INTEGER NOT NULL DEFAULT 0,
+        review_error_stage TEXT,
         first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (recipient_id, job_url)
     )
     """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_recipient_seen_jobs_pending
+    ON recipient_seen_jobs (is_seen, classification, updated_at)
+    """,
 ]
 
-REVIEW_AUDIT_SCHEMA_STATEMENTS = [
+POSTGRES_SEEN_JOBS_SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS app_config.recipient_seen_jobs (
+        recipient_id TEXT NOT NULL,
+        job_url TEXT NOT NULL,
+        source_type TEXT NOT NULL DEFAULT '',
+        target_value TEXT,
+        company_name TEXT,
+        title TEXT,
+        location TEXT,
+        is_seen BOOLEAN NOT NULL DEFAULT TRUE,
+        processing_status TEXT NOT NULL DEFAULT 'processed',
+        review_family TEXT,
+        classification TEXT,
+        stage TEXT,
+        run_id TEXT,
+        semantic_rank INTEGER,
+        raw_embedding_score DOUBLE PRECISION,
+        semantic_score DOUBLE PRECISION,
+        semantic_threshold DOUBLE PRECISION,
+        sent BOOLEAN NOT NULL DEFAULT FALSE,
+        review_error_stage TEXT,
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (recipient_id, job_url)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_recipient_seen_jobs_pending
+    ON app_config.recipient_seen_jobs (is_seen, classification, updated_at)
+    """,
+]
+
+SQLITE_REVIEW_AUDIT_SCHEMA_STATEMENTS = [
     """
     CREATE TABLE IF NOT EXISTS recipient_review_audit (
         audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,7 +128,7 @@ REVIEW_AUDIT_SCHEMA_STATEMENTS = [
 
 POSTGRES_REVIEW_AUDIT_SCHEMA_STATEMENTS = [
     """
-    CREATE TABLE IF NOT EXISTS recipient_review_audit (
+    CREATE TABLE IF NOT EXISTS app_config.recipient_review_audit (
         audit_id BIGSERIAL PRIMARY KEY,
         run_id TEXT NOT NULL,
         recipient_id TEXT NOT NULL,
@@ -118,15 +168,15 @@ POSTGRES_REVIEW_AUDIT_SCHEMA_STATEMENTS = [
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_recipient_review_audit_recipient_created
-    ON recipient_review_audit (recipient_id, created_at)
+    ON app_config.recipient_review_audit (recipient_id, created_at)
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_recipient_review_audit_run
-    ON recipient_review_audit (run_id)
+    ON app_config.recipient_review_audit (run_id)
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_recipient_review_audit_classification
-    ON recipient_review_audit (classification)
+    ON app_config.recipient_review_audit (classification)
     """,
 ]
 
@@ -155,6 +205,12 @@ SQLITE_RECIPIENT_PROFILE_SCHEMA_STATEMENTS = [
 
 DEFAULT_AUDIT_KEEP_ROWS = 1000
 DEFAULT_AUDIT_HIGH_WATER_ROWS = 1500
+PENDING_JOB_STATE_CLASSIFICATIONS = (
+    "semantic_above_threshold_not_reviewed",
+    "gemini_client_setup_failed_not_seen",
+    "gemini_batch_failed_not_seen",
+    "gemini_pass1_approved_final_failed_not_seen",
+)
 
 POSTGRES_RECIPIENT_PROFILE_SCHEMA_STATEMENTS = [
     "CREATE SCHEMA IF NOT EXISTS app_config",
@@ -393,10 +449,11 @@ class Storage:
     def load_seen_urls(self, recipient_id):
         rows = self._fetch_all(
             self._sql(
-                """
+                f"""
                 SELECT job_url
-                FROM recipient_seen_jobs
-                WHERE recipient_id = {placeholder}
+                FROM {self._seen_jobs_table_name()}
+                WHERE recipient_id = {{placeholder}}
+                  AND is_seen = {self._true_literal()}
                 """
             ),
             (recipient_id,),
@@ -404,39 +461,100 @@ class Storage:
         return {row["job_url"] for row in rows if row.get("job_url")}
 
     def store_seen_jobs(self, recipient_id, jobs):
-        rows = [
-            (
-                recipient_id,
-                job["url"],
-                job["source"],
-                job.get("target_value", ""),
-                job.get("company", ""),
-                job.get("title", ""),
-                job.get("location", ""),
+        state_rows = []
+        for job in jobs:
+            state_rows.append(
+                {
+                    "job_url": job.get("url", ""),
+                    "source_type": job.get("source", ""),
+                    "target_value": job.get("target_value", ""),
+                    "company_name": job.get("company", ""),
+                    "title": job.get("title", ""),
+                    "location": job.get("location", ""),
+                    "is_seen": True,
+                    "processing_status": "processed",
+                    "review_family": job.get("review_family"),
+                    "classification": job.get("classification") or "seen",
+                    "stage": job.get("stage"),
+                    "sent": bool(job.get("sent", False)),
+                }
             )
-            for job in jobs
+        self.store_job_state_rows(recipient_id, None, state_rows)
+
+    def store_job_state_rows(self, recipient_id, run_id, state_rows):
+        rows = [
+            self._normalize_job_state_row(recipient_id, run_id, row)
+            for row in state_rows
+            if row.get("job_url")
         ]
 
         if not rows:
             return
 
+        columns = [
+            "recipient_id",
+            "job_url",
+            "source_type",
+            "target_value",
+            "company_name",
+            "title",
+            "location",
+            "is_seen",
+            "processing_status",
+            "review_family",
+            "classification",
+            "stage",
+            "run_id",
+            "semantic_rank",
+            "raw_embedding_score",
+            "semantic_score",
+            "semantic_threshold",
+            "sent",
+            "review_error_stage",
+        ]
+
         if self.backend == "sqlite":
+            placeholders = ", ".join("?" for _column in columns)
             connection = self._connect_sqlite()
             try:
                 connection.executemany(
-                    """
-                    INSERT OR IGNORE INTO recipient_seen_jobs (
-                        recipient_id,
-                        job_url,
-                        source_type,
-                        target_value,
-                        company_name,
-                        title,
-                        location
+                    f"""
+                    INSERT INTO recipient_seen_jobs (
+                        {", ".join(columns)}
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    VALUES ({placeholders})
+                    ON CONFLICT(recipient_id, job_url) DO UPDATE SET
+                        source_type = excluded.source_type,
+                        target_value = excluded.target_value,
+                        company_name = excluded.company_name,
+                        title = excluded.title,
+                        location = excluded.location,
+                        is_seen = CASE
+                            WHEN recipient_seen_jobs.is_seen = 1
+                              OR excluded.is_seen = 1
+                            THEN 1 ELSE 0 END,
+                        processing_status = CASE
+                            WHEN recipient_seen_jobs.is_seen = 1
+                              OR excluded.is_seen = 1
+                            THEN 'processed'
+                            ELSE excluded.processing_status
+                        END,
+                        review_family = excluded.review_family,
+                        classification = excluded.classification,
+                        stage = excluded.stage,
+                        run_id = excluded.run_id,
+                        semantic_rank = excluded.semantic_rank,
+                        raw_embedding_score = excluded.raw_embedding_score,
+                        semantic_score = excluded.semantic_score,
+                        semantic_threshold = excluded.semantic_threshold,
+                        sent = CASE
+                            WHEN recipient_seen_jobs.sent = 1
+                              OR excluded.sent = 1
+                            THEN 1 ELSE 0 END,
+                        review_error_stage = excluded.review_error_stage,
+                        updated_at = CURRENT_TIMESTAMP
                     """,
-                    rows,
+                    [tuple(row[column] for column in columns) for row in rows],
                 )
                 connection.commit()
             finally:
@@ -446,22 +564,45 @@ class Storage:
         connection = self._connect_postgres()
         try:
             with connection.cursor() as cursor:
-                cursor.executemany(
-                    """
-                    INSERT INTO recipient_seen_jobs (
-                        recipient_id,
-                        job_url,
-                        source_type,
-                        target_value,
-                        company_name,
-                        title,
-                        location
+                target_table = self._seen_jobs_conflict_target_name()
+                for row in rows:
+                    cursor.execute(
+                        f"""
+                        INSERT INTO {self._seen_jobs_table_name()} (
+                            {", ".join(columns)}
+                        )
+                        VALUES (
+                            {", ".join("%s" for _column in columns)}
+                        )
+                        ON CONFLICT (recipient_id, job_url) DO UPDATE SET
+                            source_type = EXCLUDED.source_type,
+                            target_value = EXCLUDED.target_value,
+                            company_name = EXCLUDED.company_name,
+                            title = EXCLUDED.title,
+                            location = EXCLUDED.location,
+                            is_seen = {target_table}.is_seen
+                                OR EXCLUDED.is_seen,
+                            processing_status = CASE
+                                WHEN {target_table}.is_seen
+                                  OR EXCLUDED.is_seen
+                                THEN 'processed'
+                                ELSE EXCLUDED.processing_status
+                            END,
+                            review_family = EXCLUDED.review_family,
+                            classification = EXCLUDED.classification,
+                            stage = EXCLUDED.stage,
+                            run_id = EXCLUDED.run_id,
+                            semantic_rank = EXCLUDED.semantic_rank,
+                            raw_embedding_score = EXCLUDED.raw_embedding_score,
+                            semantic_score = EXCLUDED.semantic_score,
+                            semantic_threshold = EXCLUDED.semantic_threshold,
+                            sent = {target_table}.sent
+                                OR EXCLUDED.sent,
+                            review_error_stage = EXCLUDED.review_error_stage,
+                            updated_at = CURRENT_TIMESTAMP
+                        """,
+                        tuple(row[column] for column in columns),
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (recipient_id, job_url) DO NOTHING
-                    """,
-                    rows,
-                )
             connection.commit()
         finally:
             connection.close()
@@ -517,7 +658,7 @@ class Storage:
             try:
                 connection.executemany(
                     f"""
-                    INSERT INTO recipient_review_audit (
+                    INSERT INTO {self._review_audit_table_name()} (
                         {", ".join(columns)}
                     )
                     VALUES ({placeholders})
@@ -547,7 +688,7 @@ class Storage:
                 for row in rows:
                     cursor.execute(
                         f"""
-                        INSERT INTO recipient_review_audit (
+                        INSERT INTO {self._review_audit_table_name()} (
                             {", ".join(columns)}
                         )
                         VALUES (
@@ -599,10 +740,10 @@ class Storage:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    DELETE FROM recipient_review_audit
+                    DELETE FROM app_config.recipient_review_audit
                     WHERE audit_id IN (
                         SELECT audit_id
-                        FROM recipient_review_audit
+                        FROM app_config.recipient_review_audit
                         ORDER BY created_at ASC, audit_id ASC
                         LIMIT %s
                     )
@@ -649,7 +790,7 @@ class Storage:
         return self._fetch_all(
             f"""
             SELECT *
-            FROM recipient_review_audit
+            FROM {self._review_audit_table_name()}
             {where_clause}
             ORDER BY {order_clause}
             {limit_clause}
@@ -659,9 +800,9 @@ class Storage:
 
     def load_review_audit_filter_values(self):
         rows = self._fetch_all(
-            """
+            f"""
             SELECT recipient_id, review_family, classification, run_id
-            FROM recipient_review_audit
+            FROM {self._review_audit_table_name()}
             ORDER BY created_at DESC, audit_id DESC
             """,
             (),
@@ -672,6 +813,46 @@ class Storage:
             "classifications": self._unique_values(row.get("classification") for row in rows),
             "run_ids": self._unique_values(row.get("run_id") for row in rows),
         }
+
+    def count_recent_unseen_review_backlog(self, max_age_hours=None):
+        return self.count_recent_pending_job_backlog(max_age_hours=max_age_hours)
+
+    def count_recent_pending_job_backlog(self, max_age_hours=None):
+        placeholder = "?" if self.backend == "sqlite" else "%s"
+        classification_placeholders = ", ".join(
+            placeholder for _classification in PENDING_JOB_STATE_CLASSIFICATIONS
+        )
+        seen_false = "0" if self.backend == "sqlite" else "FALSE"
+        filters = [
+            f"is_seen = {seen_false}",
+            f"classification IN ({classification_placeholders})",
+        ]
+        params = list(PENDING_JOB_STATE_CLASSIFICATIONS)
+
+        if max_age_hours is not None:
+            hours = max(1, int(max_age_hours))
+            if self.backend == "sqlite":
+                filters.append("updated_at >= datetime('now', ?)")
+                params.append(f"-{hours} hours")
+            else:
+                filters.append(
+                    "updated_at >= (CURRENT_TIMESTAMP - (%s * INTERVAL '1 hour'))"
+                )
+                params.append(hours)
+
+        rows = self._fetch_all(
+            f"""
+            SELECT COUNT(*) AS row_count
+            FROM (
+                SELECT recipient_id, job_url
+                FROM {self._seen_jobs_table_name()}
+                WHERE {" AND ".join(filters)}
+                GROUP BY recipient_id, job_url
+            ) backlog
+            """,
+            tuple(params),
+        )
+        return int(rows[0]["row_count"]) if rows else 0
 
     def _fetch_all(self, query, params):
         if self.backend == "sqlite":
@@ -695,9 +876,28 @@ class Storage:
     def _ensure_sqlite_schema(self):
         connection = self._connect_sqlite()
         try:
-            for statement in SEEN_JOBS_SCHEMA_STATEMENTS:
+            for statement in SQLITE_SEEN_JOBS_SCHEMA_STATEMENTS:
                 connection.execute(statement)
-            for statement in REVIEW_AUDIT_SCHEMA_STATEMENTS:
+            self._ensure_sqlite_columns(
+                connection,
+                "recipient_seen_jobs",
+                {
+                    "is_seen": "INTEGER NOT NULL DEFAULT 1",
+                    "processing_status": "TEXT NOT NULL DEFAULT 'processed'",
+                    "review_family": "TEXT",
+                    "classification": "TEXT",
+                    "stage": "TEXT",
+                    "run_id": "TEXT",
+                    "semantic_rank": "INTEGER",
+                    "raw_embedding_score": "REAL",
+                    "semantic_score": "REAL",
+                    "semantic_threshold": "REAL",
+                    "sent": "INTEGER NOT NULL DEFAULT 0",
+                    "review_error_stage": "TEXT",
+                    "updated_at": "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP",
+                },
+            )
+            for statement in SQLITE_REVIEW_AUDIT_SCHEMA_STATEMENTS:
                 connection.execute(statement)
             self._ensure_sqlite_columns(
                 connection,
@@ -714,18 +914,22 @@ class Storage:
         connection = self._connect_postgres()
         try:
             with connection.cursor() as cursor:
-                for statement in SEEN_JOBS_SCHEMA_STATEMENTS:
+                cursor.execute("CREATE SCHEMA IF NOT EXISTS app_config")
+                for statement in POSTGRES_SEEN_JOBS_SCHEMA_STATEMENTS:
                     cursor.execute(statement)
                 for statement in POSTGRES_REVIEW_AUDIT_SCHEMA_STATEMENTS:
                     cursor.execute(statement)
+                self._ensure_postgres_seen_job_columns(cursor)
                 cursor.execute(
                     """
-                    ALTER TABLE recipient_review_audit
+                    ALTER TABLE app_config.recipient_review_audit
                     ADD COLUMN IF NOT EXISTS raw_embedding_score DOUBLE PRECISION
                     """
                 )
                 for statement in POSTGRES_RECIPIENT_PROFILE_SCHEMA_STATEMENTS:
                     cursor.execute(statement)
+                self._migrate_public_seen_jobs_to_app_config(cursor)
+                self._migrate_public_review_audit_to_app_config(cursor)
             connection.commit()
         finally:
             connection.close()
@@ -745,6 +949,179 @@ class Storage:
                 connection.execute(
                     f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
                 )
+
+    @staticmethod
+    def _ensure_postgres_seen_job_columns(cursor):
+        columns = {
+            "is_seen": "BOOLEAN NOT NULL DEFAULT TRUE",
+            "processing_status": "TEXT NOT NULL DEFAULT 'processed'",
+            "review_family": "TEXT",
+            "classification": "TEXT",
+            "stage": "TEXT",
+            "run_id": "TEXT",
+            "semantic_rank": "INTEGER",
+            "raw_embedding_score": "DOUBLE PRECISION",
+            "semantic_score": "DOUBLE PRECISION",
+            "semantic_threshold": "DOUBLE PRECISION",
+            "sent": "BOOLEAN NOT NULL DEFAULT FALSE",
+            "review_error_stage": "TEXT",
+            "updated_at": "TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+        }
+        for column_name, column_type in columns.items():
+            cursor.execute(
+                f"""
+                ALTER TABLE app_config.recipient_seen_jobs
+                ADD COLUMN IF NOT EXISTS {column_name} {column_type}
+                """
+            )
+
+    @staticmethod
+    def _migrate_public_seen_jobs_to_app_config(cursor):
+        cursor.execute("SELECT to_regclass('public.recipient_seen_jobs') IS NOT NULL")
+        if not cursor.fetchone()[0]:
+            return
+
+        cursor.execute(
+            """
+            INSERT INTO app_config.recipient_seen_jobs (
+                recipient_id,
+                job_url,
+                source_type,
+                target_value,
+                company_name,
+                title,
+                location,
+                is_seen,
+                processing_status,
+                classification,
+                first_seen_at,
+                updated_at
+            )
+            SELECT
+                recipient_id,
+                job_url,
+                COALESCE(source_type, ''),
+                target_value,
+                company_name,
+                title,
+                location,
+                TRUE,
+                'processed',
+                'seen',
+                first_seen_at,
+                first_seen_at
+            FROM public.recipient_seen_jobs
+            ON CONFLICT (recipient_id, job_url) DO NOTHING
+            """
+        )
+
+    @staticmethod
+    def _migrate_public_review_audit_to_app_config(cursor):
+        cursor.execute("SELECT to_regclass('public.recipient_review_audit') IS NOT NULL")
+        if not cursor.fetchone()[0]:
+            return
+
+        cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'recipient_review_audit'
+            """
+        )
+        public_columns = {row[0] for row in cursor.fetchall()}
+        raw_embedding_select = (
+            "raw_embedding_score"
+            if "raw_embedding_score" in public_columns
+            else "NULL"
+        )
+        cursor.execute(
+            f"""
+            INSERT INTO app_config.recipient_review_audit (
+                run_id,
+                recipient_id,
+                job_url,
+                source_type,
+                target_value,
+                company_name,
+                title,
+                location,
+                review_family,
+                classification,
+                stage,
+                seen_recorded,
+                sent,
+                hard_filter_reason,
+                semantic_rank,
+                raw_embedding_score,
+                semantic_score,
+                semantic_threshold,
+                semantic_top_profile,
+                semantic_second_profile,
+                semantic_fit_summary,
+                title_boost_multiplier,
+                salary_upper_bound_gbp,
+                salary_penalty_applied,
+                gemini_pass1_score,
+                gemini_pass2_score,
+                gemini_matched_profile,
+                gemini_reason,
+                supporting_evidence_json,
+                mismatch_evidence_json,
+                review_error_stage,
+                review_error,
+                metadata_json,
+                created_at
+            )
+            SELECT
+                run_id,
+                recipient_id,
+                job_url,
+                source_type,
+                target_value,
+                company_name,
+                title,
+                location,
+                review_family,
+                classification,
+                stage,
+                seen_recorded,
+                sent,
+                hard_filter_reason,
+                semantic_rank,
+                {raw_embedding_select},
+                semantic_score,
+                semantic_threshold,
+                semantic_top_profile,
+                semantic_second_profile,
+                semantic_fit_summary,
+                title_boost_multiplier,
+                salary_upper_bound_gbp,
+                salary_penalty_applied,
+                gemini_pass1_score,
+                gemini_pass2_score,
+                gemini_matched_profile,
+                gemini_reason,
+                supporting_evidence_json,
+                mismatch_evidence_json,
+                review_error_stage,
+                review_error,
+                metadata_json,
+                created_at
+            FROM public.recipient_review_audit old_audit
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM app_config.recipient_review_audit migrated
+                WHERE migrated.run_id = old_audit.run_id
+                  AND migrated.recipient_id = old_audit.recipient_id
+                  AND migrated.job_url = old_audit.job_url
+                  AND migrated.review_family = old_audit.review_family
+                  AND migrated.classification = old_audit.classification
+                  AND COALESCE(migrated.stage, '') = COALESCE(old_audit.stage, '')
+                  AND migrated.created_at = old_audit.created_at
+            )
+            """
+        )
 
     def _connect_postgres(self):
         try:
@@ -779,6 +1156,19 @@ class Storage:
         if self.backend == "sqlite":
             return "recipient_profile_versions"
         return "app_config.recipient_profile_versions"
+
+    def _seen_jobs_table_name(self):
+        if self.backend == "sqlite":
+            return "recipient_seen_jobs"
+        return "app_config.recipient_seen_jobs"
+
+    def _seen_jobs_conflict_target_name(self):
+        return "recipient_seen_jobs"
+
+    def _review_audit_table_name(self):
+        if self.backend == "sqlite":
+            return "recipient_review_audit"
+        return "app_config.recipient_review_audit"
 
     def _true_literal(self):
         return "1" if self.backend == "sqlite" else "TRUE"
@@ -835,7 +1225,7 @@ class Storage:
 
     def _review_audit_row_count(self):
         rows = self._fetch_all(
-            "SELECT COUNT(*) AS row_count FROM recipient_review_audit",
+            f"SELECT COUNT(*) AS row_count FROM {self._review_audit_table_name()}",
             (),
         )
         return int(rows[0]["row_count"]) if rows else 0
@@ -854,6 +1244,32 @@ class Storage:
         keep = max(1, keep)
         high_water = max(keep, high_water)
         return keep, high_water
+
+    def _normalize_job_state_row(self, recipient_id, run_id, row):
+        is_seen = bool(row.get("is_seen", row.get("seen_recorded", False)))
+        return {
+            "recipient_id": recipient_id,
+            "job_url": row.get("job_url", ""),
+            "source_type": row.get("source_type", ""),
+            "target_value": row.get("target_value", ""),
+            "company_name": row.get("company_name", ""),
+            "title": row.get("title", ""),
+            "location": row.get("location", ""),
+            "is_seen": is_seen,
+            "processing_status": "processed"
+            if is_seen
+            else row.get("processing_status", "pending_review"),
+            "review_family": row.get("review_family"),
+            "classification": row.get("classification"),
+            "stage": row.get("stage"),
+            "run_id": row.get("run_id") or run_id,
+            "semantic_rank": row.get("semantic_rank"),
+            "raw_embedding_score": row.get("raw_embedding_score"),
+            "semantic_score": row.get("semantic_score"),
+            "semantic_threshold": row.get("semantic_threshold"),
+            "sent": bool(row.get("sent", False)),
+            "review_error_stage": row.get("review_error_stage"),
+        }
 
     def _normalize_review_audit_row(self, recipient_id, run_id, row):
         metadata = row.get("metadata") or {}

@@ -218,6 +218,111 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(["recipient-a"], filter_values["recipient_ids"])
         self.assertEqual(["semantic"], filter_values["review_families"])
 
+    def test_review_backlog_count_uses_recent_pending_job_state_rows(self):
+        db_path = (self.test_dir / "state_backlog.db").resolve()
+        storage = create_storage(f"sqlite:///{db_path}")
+        storage.ensure_schema()
+        rows = [
+            {
+                "job_url": "https://example.com/semantic-backlog",
+                "source_type": "ashby",
+                "company_name": "Example",
+                "title": "Semantic Backlog",
+                "location": "London",
+                "review_family": "semantic",
+                "classification": "semantic_above_threshold_not_reviewed",
+                "stage": "semantic_ranking",
+                "is_seen": False,
+            },
+            {
+                "job_url": "https://example.com/already-seen",
+                "source_type": "ashby",
+                "company_name": "Example",
+                "title": "Already Seen",
+                "location": "London",
+                "review_family": "semantic",
+                "classification": "semantic_above_threshold_seen",
+                "stage": "semantic_ranking",
+                "is_seen": True,
+            },
+            {
+                "job_url": "https://example.com/gemini-failed",
+                "source_type": "ashby",
+                "company_name": "Example",
+                "title": "Gemini Failed",
+                "location": "London",
+                "review_family": "gemini",
+                "classification": "gemini_batch_failed_not_seen",
+                "stage": "gemini_pass1",
+                "is_seen": False,
+            },
+            {
+                "job_url": "https://example.com/below-threshold",
+                "source_type": "ashby",
+                "company_name": "Example",
+                "title": "Below Threshold",
+                "location": "London",
+                "review_family": "semantic",
+                "classification": "semantic_below_threshold",
+                "stage": "semantic_ranking",
+                "is_seen": True,
+            },
+            {
+                "job_url": "https://example.com/hard-filtered",
+                "source_type": "ashby",
+                "company_name": "Example",
+                "title": "Hard Filtered",
+                "location": "London",
+                "review_family": "hard_filter",
+                "classification": "hard_filtered",
+                "stage": "hard_filter",
+                "is_seen": False,
+            },
+            {
+                "job_url": "https://example.com/recorded-seen",
+                "source_type": "ashby",
+                "company_name": "Example",
+                "title": "Recorded Seen",
+                "location": "London",
+                "review_family": "gemini",
+                "classification": "gemini_pass2_approved_sent_seen",
+                "stage": "gemini_pass2",
+                "is_seen": True,
+            },
+        ]
+        storage.store_job_state_rows("recipient-a", "run-1", rows)
+
+        self.assertEqual(2, storage.count_recent_pending_job_backlog())
+        self.assertEqual(
+            {
+                "https://example.com/already-seen",
+                "https://example.com/below-threshold",
+                "https://example.com/recorded-seen",
+            },
+            storage.load_seen_urls("recipient-a"),
+        )
+
+        connection = storage._connect_sqlite()
+        try:
+            connection.execute(
+                """
+                UPDATE recipient_seen_jobs
+                SET updated_at = '2000-01-01 00:00:00'
+                WHERE job_url IN (
+                    'https://example.com/semantic-backlog',
+                    'https://example.com/gemini-failed'
+                )
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        self.assertEqual(
+            0,
+            storage.count_recent_pending_job_backlog(max_age_hours=48),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

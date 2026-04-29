@@ -7,6 +7,7 @@ from run_all import (
     MAX_RECIPIENT_CONCURRENCY,
     RECIPIENT_CONCURRENCY_CAP,
     RUN_SNAPSHOT_SCHEMA_VERSION,
+    build_job_state_rows,
     build_run_summary,
     build_run_snapshot,
     collect_all_jobs,
@@ -372,6 +373,59 @@ class RunAllTests(unittest.TestCase):
                 }
             ],
             seen_jobs,
+        )
+
+    def test_build_job_state_rows_tracks_seen_and_pending_states(self):
+        rows = [
+            {
+                "job_url": "https://example.com/below",
+                "review_family": "semantic",
+                "classification": "semantic_below_threshold",
+                "stage": "semantic_ranking",
+                "seen_recorded": True,
+            },
+            {
+                "job_url": "https://example.com/backlog",
+                "review_family": "semantic",
+                "classification": "semantic_above_threshold",
+                "stage": "semantic_ranking",
+                "seen_recorded": False,
+            },
+            {
+                "job_url": "https://example.com/gemini-failed",
+                "review_family": "gemini",
+                "classification": "gemini_batch_failed_not_seen",
+                "stage": "gemini_pass1",
+                "seen_recorded": False,
+            },
+            {
+                "job_url": "https://example.com/hard",
+                "review_family": "hard_filter",
+                "classification": "hard_filtered",
+                "stage": "hard_filter",
+            },
+        ]
+
+        state_rows = build_job_state_rows(rows)
+        state_by_url = {row["job_url"]: row for row in state_rows}
+
+        self.assertEqual(
+            {
+                "https://example.com/below",
+                "https://example.com/backlog",
+                "https://example.com/gemini-failed",
+            },
+            set(state_by_url),
+        )
+        self.assertTrue(state_by_url["https://example.com/below"]["is_seen"])
+        self.assertFalse(state_by_url["https://example.com/backlog"]["is_seen"])
+        self.assertEqual(
+            "semantic_above_threshold_not_reviewed",
+            state_by_url["https://example.com/backlog"]["classification"],
+        )
+        self.assertEqual(
+            "pending_review",
+            state_by_url["https://example.com/gemini-failed"]["processing_status"],
         )
 
     def test_merge_seen_jobs_dedupes_urls(self):

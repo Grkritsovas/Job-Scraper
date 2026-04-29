@@ -19,6 +19,7 @@ Optional GitHub Actions variables:
 - `JOB_SCRAPER_LLM_DESCRIPTION_CHARS`
 - `JOB_SCRAPER_LLM_RETRY_ATTEMPTS`
 - `JOB_SCRAPER_LLM_RETRY_BASE_SECONDS`
+- `JOB_SCRAPER_SUPPORT_BACKLOG_HOURS`
 - `JOB_SCRAPER_AUDIT_KEEP_ROWS`
 - `JOB_SCRAPER_AUDIT_HIGH_WATER_ROWS`
 - `ASHBY_COMPANIES_JSON`
@@ -51,9 +52,15 @@ Ignored files such as `recipient_profiles.local.json` may still exist as old scr
 
 `JOB_SCRAPER_LLM_TOP_N` controls how many ranked semantic matches are passed into the review stage. When Gemini is enabled, these are the jobs Gemini reviews. If Gemini is disabled, the same cap is used for the semantic-only digest path.
 
-Semantic matches above the threshold but outside this top-N cap are not marked seen. They can be picked up in a later run after higher-ranked reviewed jobs have been stored as seen.
+Semantic matches above the threshold but outside this top-N cap are stored as pending backlog. They can be picked up in a later run after higher-ranked reviewed jobs have been stored as seen.
 
 Semantic matches below the threshold are marked seen after ranking so the same weak matches are not repeatedly embedded on later runs. Hard-filtered jobs are not marked seen; those checks are deterministic and cheap to repeat.
+
+## Support Runs
+
+The workflow has main scheduled runs and lighter support schedules. Main schedules run the full scraper. Support schedules first run `check_review_backlog.py`, which queries recent pending rows in the job state table. If no recent backlog exists, the workflow skips full dependency installation and scraper execution.
+
+`JOB_SCRAPER_SUPPORT_BACKLOG_HOURS` controls the age window for support-run backlog checks. The default is `48` hours.
 
 ## Local Admin UI
 
@@ -71,12 +78,13 @@ If `DATABASE_URL` is set, `python admin_ui.py` tries that database first. If the
 python admin_ui.py "postgresql://user:password@host:5432/database"
 ```
 
-The UI can edit database-backed recipient profiles through locked schema fields, preview the generated JSON, validate/normalize it through the runtime profile loader, compare/restore saved profile versions, and browse recent `recipient_review_audit` rows. It does not edit GitHub secrets, local recipient JSON files, or seen-job records.
+The UI can edit database-backed recipient profiles through locked schema fields, preview the generated JSON, validate/normalize it through the runtime profile loader, compare/restore saved profile versions, and browse recent `app_config.recipient_review_audit` rows. It does not edit GitHub secrets, local recipient JSON files, or job state records.
 
 ## Review Audit
 
 The scraper writes compact review audit rows to:
-- `recipient_review_audit`
+- `app_config.recipient_review_audit` on Postgres/Supabase
+- `recipient_review_audit` on local SQLite
 
 Rows are keyed for review by `run_id`, `recipient_id`, `job_url`, `review_family`, and `classification`. The audit stores job metadata, semantic scores, hard-filter reasons, Gemini pass/fail classification, concise Gemini reasons, and short evidence snippets. It does not store full job descriptions or recipient profile JSON.
 
@@ -85,6 +93,19 @@ Audit retention is controlled by:
 - `JOB_SCRAPER_AUDIT_HIGH_WATER_ROWS`, default `1500`
 
 When total audit rows exceed the high-water value, the oldest rows are pruned until only the keep count remains.
+
+## Job State And Support Runs
+
+The scraper stores per-recipient job processing state in:
+- `app_config.recipient_seen_jobs` on Postgres/Supabase
+- `recipient_seen_jobs` on local SQLite
+
+Rows with `is_seen=true` are skipped in future runs. Rows with `is_seen=false` are pending backlog rows that can be picked up by support runs. Support runs check recent pending rows before installing full scraper dependencies.
+
+The support-run backlog age is controlled by:
+- `JOB_SCRAPER_SUPPORT_BACKLOG_HOURS`, default `48`
+
+See `docs/INTENDED_BEHAVIOR.md` for the concise behavior contract.
 
 ## Grouped Recipient Profile Shape
 

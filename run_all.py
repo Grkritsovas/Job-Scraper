@@ -147,6 +147,13 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
         ranking_audit_rows,
         review_result,
     )
+    review_result["job_state_rows"] = build_job_state_rows(
+        review_result["audit_rows"],
+    )
+    review_result["seen_recorded_count"] = count_seen_job_state_rows(
+        review_result["job_state_rows"],
+        fallback_count=len(review_result["seen_jobs"]),
+    )
     diagnostics.record_recipient_summary(
         recipient_profile["id"],
         {
@@ -159,7 +166,7 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
             ),
             "review_mode": review_result["review_mode"],
             "reviewed_jobs": len(review_result["reviewed_jobs"]),
-            "seen_recorded_jobs": len(review_result["seen_jobs"]),
+            "seen_recorded_jobs": review_result["seen_recorded_count"],
             "llm_shortlisted_jobs": review_result.get("llm_shortlisted_jobs"),
             "gemini_reviewed_jobs": review_result.get("gemini_reviewed_jobs"),
             "review_error": review_result.get("review_error"),
@@ -245,6 +252,60 @@ def build_review_audit_rows(ranking_audit_rows, review_result):
     return merged_rows + review_audit_rows
 
 
+def build_job_state_rows(audit_rows):
+    state_rows = []
+    for row in audit_rows or []:
+        state_row = job_state_row_from_audit_row(row)
+        if state_row is not None:
+            state_rows.append(state_row)
+    return state_rows
+
+
+def count_seen_job_state_rows(job_state_rows, fallback_count=0):
+    if not job_state_rows:
+        return fallback_count
+    return sum(1 for row in job_state_rows if row.get("is_seen"))
+
+
+def job_state_row_from_audit_row(row):
+    classification = row.get("classification", "")
+    if row.get("review_family") == "hard_filter" or classification == "hard_filtered":
+        return None
+
+    is_seen = bool(row.get("seen_recorded", False))
+    state_classification = classification
+
+    if classification == "semantic_above_threshold":
+        if is_seen or row.get("sent"):
+            state_classification = "semantic_above_threshold_seen"
+            is_seen = True
+        else:
+            state_classification = "semantic_above_threshold_not_reviewed"
+    elif classification == "gemini_pass1_rejected_final_failed_not_seen":
+        state_classification = "gemini_pass1_rejected_seen"
+        is_seen = True
+
+    return {
+        "job_url": row.get("job_url", ""),
+        "source_type": row.get("source_type", ""),
+        "target_value": row.get("target_value", ""),
+        "company_name": row.get("company_name", ""),
+        "title": row.get("title", ""),
+        "location": row.get("location", ""),
+        "is_seen": is_seen,
+        "processing_status": "processed" if is_seen else "pending_review",
+        "review_family": row.get("review_family"),
+        "classification": state_classification,
+        "stage": row.get("stage"),
+        "semantic_rank": row.get("semantic_rank"),
+        "raw_embedding_score": row.get("raw_embedding_score"),
+        "semantic_score": row.get("semantic_score"),
+        "semantic_threshold": row.get("semantic_threshold"),
+        "sent": bool(row.get("sent", False)),
+        "review_error_stage": row.get("review_error_stage"),
+    }
+
+
 def send_digest(recipient_profile, jobs):
     payloads = build_digest_payloads(jobs, recipient_profile)
 
@@ -292,7 +353,14 @@ def process_recipient(recipient_profile, candidates, storage, diagnostics, run_i
     seen_jobs = review_result.get("seen_jobs", reviewed_jobs)
     if jobs_to_send:
         send_digest(recipient_profile, jobs_to_send)
-    if seen_jobs:
+    job_state_rows = review_result.get("job_state_rows") or []
+    if job_state_rows and hasattr(storage, "store_job_state_rows"):
+        storage.store_job_state_rows(
+            recipient_profile["id"],
+            run_id,
+            job_state_rows,
+        )
+    elif seen_jobs:
         storage.store_seen_jobs(recipient_profile["id"], seen_jobs)
     if review_result.get("audit_rows") and hasattr(storage, "store_review_audit_rows"):
         storage.store_review_audit_rows(

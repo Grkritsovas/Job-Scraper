@@ -82,7 +82,9 @@ Recipient profiles are database-only. The app does not read `recipient_profiles.
 
 ## Database
 
-`app_config.recipient_profiles` stores recipient config, `recipient_seen_jobs` stores seen job URLs per recipient profile, and `recipient_review_audit` stores compact semantic/Gemini review audit rows.
+`app_config.recipient_profiles` stores recipient config, `app_config.recipient_seen_jobs` stores per-recipient job processing state, and `app_config.recipient_review_audit` stores compact semantic/Gemini review audit rows.
+
+See [docs/INTENDED_BEHAVIOR.md](docs/INTENDED_BEHAVIOR.md) for the intended behavior of job state, support runs, review audit, semantic matching, Gemini review, and the admin UI.
 
 ## Acknowledgements
 

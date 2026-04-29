@@ -969,8 +969,8 @@ def _final_failure_audit_rows(
 ):
     audit_rows = _pass_one_rejection_audit_rows(
         pass_one_rejections,
-        "gemini_pass1_rejected_final_failed_not_seen",
-        seen_recorded=False,
+        "gemini_pass1_rejected_seen",
+        seen_recorded=True,
         review_error=review_error,
         review_error_stage="final_rerank",
     )

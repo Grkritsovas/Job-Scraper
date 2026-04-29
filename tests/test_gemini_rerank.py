@@ -335,7 +335,7 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertTrue(result["audit_rows"][0]["seen_recorded"])
 
     def test_rerank_returns_no_jobs_if_final_pass_fails(self):
-        jobs = [make_job(1)]
+        jobs = [make_job(1), make_job(2)]
         recipient_profile = {
             "semantic_profiles": ["swe"],
             "semantic_profile_texts": {},
@@ -364,7 +364,14 @@ class GeminiRerankTests(unittest.TestCase):
                                 "supporting_evidence": ["Software Engineer 1"],
                                 "mismatch_evidence": [],
                             }
-                        ]
+                        ],
+                        "rejected_jobs": [
+                            {
+                                "job_url": "https://example.com/job-2",
+                                "rejection_reason": "Too senior.",
+                                "mismatch_evidence": ["Requires ownership."],
+                            }
+                        ],
                     }
                 )
 
@@ -377,7 +384,7 @@ class GeminiRerankTests(unittest.TestCase):
                 jobs,
                 recipient_profile,
                 client=FinalPassFailingClient(),
-                top_n=1,
+                top_n=2,
                 batch_size=10,
             )
 
@@ -389,10 +396,14 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertEqual("final_rerank", result["review_error_stage"])
         self.assertIn("final pass failed", result["review_error"])
         self.assertEqual(
-            ["gemini_pass1_approved_final_failed_not_seen"],
+            [
+                "gemini_pass1_rejected_seen",
+                "gemini_pass1_approved_final_failed_not_seen",
+            ],
             [row["classification"] for row in result["audit_rows"]],
         )
-        self.assertFalse(result["audit_rows"][0]["seen_recorded"])
+        self.assertTrue(result["audit_rows"][0]["seen_recorded"])
+        self.assertFalse(result["audit_rows"][1]["seen_recorded"])
 
     def test_rerank_records_batch_screening_failure_stage(self):
         jobs = [make_job(1)]
