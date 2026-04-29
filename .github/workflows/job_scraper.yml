@@ -3,7 +3,7 @@ name: Job Scraper
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 9,16 * * *"
+    - cron: "30 9,16,20 * * *"
 
 concurrency:
   group: job-scraper
@@ -29,7 +29,6 @@ jobs:
       JOB_SCRAPER_LLM_TOP_N: ${{ vars.JOB_SCRAPER_LLM_TOP_N }}
       JOB_SCRAPER_LLM_BATCH_SIZE: ${{ vars.JOB_SCRAPER_LLM_BATCH_SIZE }}
       JOB_SCRAPER_LLM_DESCRIPTION_CHARS: ${{ vars.JOB_SCRAPER_LLM_DESCRIPTION_CHARS }}
-      JOB_SCRAPER_MAX_SEMANTIC_EMAIL_JOBS: ${{ vars.JOB_SCRAPER_MAX_SEMANTIC_EMAIL_JOBS }}
 
 
     steps:

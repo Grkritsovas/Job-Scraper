@@ -10,7 +10,7 @@ import uuid
 from config.recipient_profiles import load_recipient_profiles
 from config.target_config import load_configured_targets
 from emailer import send_email
-from matching.gemini_rerank import rerank_jobs_with_gemini
+from matching.gemini_rerank import get_llm_top_n, rerank_jobs_with_gemini
 from matching.ranking import rank_jobs
 from scrapers.ashby_scraper import collect_jobs as collect_ashby_jobs
 from scrapers.greenhouse_scraper import collect_jobs as collect_greenhouse_jobs
@@ -133,8 +133,9 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
         recipient_profile,
         return_stats=True,
     )
+    ranked_jobs_for_review = ranked_jobs[: get_llm_top_n(len(ranked_jobs))]
     ranking_audit_rows = ranking_stats.pop("audit_rows", [])
-    review_result = rerank_jobs_with_gemini(ranked_jobs, recipient_profile)
+    review_result = rerank_jobs_with_gemini(ranked_jobs_for_review, recipient_profile)
     review_result["audit_rows"] = build_review_audit_rows(
         ranking_audit_rows,
         review_result,
@@ -145,7 +146,10 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
             **ranking_stats,
             "input_jobs": len(candidates),
             "seen_skipped_jobs": len(candidates) - len(unseen_candidates),
-            "ranked_jobs_passed_to_review": len(ranked_jobs),
+            "ranked_jobs_passed_to_review": len(ranked_jobs_for_review),
+            "ranked_jobs_not_passed_to_review": (
+                len(ranked_jobs) - len(ranked_jobs_for_review)
+            ),
             "review_mode": review_result["review_mode"],
             "reviewed_jobs": len(review_result["reviewed_jobs"]),
             "llm_shortlisted_jobs": review_result.get("llm_shortlisted_jobs"),

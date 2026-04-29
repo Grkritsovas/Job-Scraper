@@ -107,6 +107,12 @@ class ScrapeDiagnostics:
             if review_error_stage
             else ""
         )
+        not_passed_to_review = payload.get("ranked_jobs_not_passed_to_review", 0)
+        not_passed_suffix = (
+            f" ranked_not_reviewed={not_passed_to_review}"
+            if not_passed_to_review
+            else ""
+        )
         with self._lock:
             self.recipient_summaries.append(payload)
             print(
@@ -117,6 +123,7 @@ class ScrapeDiagnostics:
                 f"below_threshold={payload.get('below_threshold_jobs', 0)} "
                 f"ranked={payload.get('ranked_jobs', 0)} "
                 f"ranked_jobs_passed_to_review={payload.get('ranked_jobs_passed_to_review', 0)} "
+                f"{not_passed_suffix}"
                 f"review_mode={review_mode}"
                 f"{reviewed_suffix}"
                 f"{llm_suffix}"

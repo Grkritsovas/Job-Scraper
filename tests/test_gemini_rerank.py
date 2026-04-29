@@ -595,7 +595,7 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertEqual(0, sleep_mock.call_count)
 
     def test_rerank_returns_capped_semantic_jobs_when_disabled(self):
-        jobs = [make_job(index) for index in range(1, 80)]
+        jobs = [make_job(index) for index in range(1, 120)]
         recipient_profile = {
             "semantic_profiles": ["swe"],
             "semantic_profile_texts": {},
@@ -606,12 +606,12 @@ class GeminiRerankTests(unittest.TestCase):
             result = rerank_jobs_with_gemini(jobs, recipient_profile)
 
         self.assertEqual("semantic", result["review_mode"])
-        self.assertEqual(60, len(result["jobs_to_send"]))
-        self.assertEqual(60, len(result["reviewed_jobs"]))
+        self.assertEqual(100, len(result["jobs_to_send"]))
+        self.assertEqual(100, len(result["reviewed_jobs"]))
         self.assertEqual("https://example.com/job-1", result["jobs_to_send"][0]["url"])
-        self.assertEqual("https://example.com/job-60", result["jobs_to_send"][-1]["url"])
+        self.assertEqual("https://example.com/job-100", result["jobs_to_send"][-1]["url"])
 
-    def test_rerank_honors_semantic_cap_env_var_when_disabled(self):
+    def test_rerank_uses_llm_top_n_when_gemini_is_disabled(self):
         jobs = [make_job(index) for index in range(1, 20)]
         recipient_profile = {
             "semantic_profiles": ["swe"],
@@ -621,7 +621,7 @@ class GeminiRerankTests(unittest.TestCase):
 
         with patch.dict(
             os.environ,
-            {"JOB_SCRAPER_MAX_SEMANTIC_EMAIL_JOBS": "7"},
+            {"JOB_SCRAPER_LLM_TOP_N": "7"},
             clear=True,
         ):
             result = rerank_jobs_with_gemini(jobs, recipient_profile)

@@ -13,7 +13,6 @@ DEFAULT_TOP_N = 100
 DEFAULT_BATCH_SIZE = 10
 DEFAULT_DESCRIPTION_CHARS = 1600
 DEFAULT_EVIDENCE_ITEMS = 2
-DEFAULT_MAX_SEMANTIC_EMAIL_JOBS = 60
 DEFAULT_GEMINI_RETRY_ATTEMPTS = 20
 DEFAULT_GEMINI_RETRY_BASE_SECONDS = 5.0
 GEMINI_RETRY_MAX_DELAY_SECONDS = 60.0
@@ -148,6 +147,25 @@ def _safe_float_env(name, default):
         return float(raw_value)
     except ValueError:
         return default
+
+
+def _positive_int(value, default):
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def get_llm_top_n(job_count=None, override=None):
+    configured = (
+        _positive_int(override, DEFAULT_TOP_N)
+        if override is not None
+        else max(1, _safe_int_env("JOB_SCRAPER_LLM_TOP_N", DEFAULT_TOP_N))
+    )
+    if job_count is None:
+        return configured
+
+    return min(max(0, int(job_count)), configured)
 
 
 def _build_result(
@@ -990,28 +1008,17 @@ def rerank_jobs_with_gemini(
             gemini_reviewed_jobs=0,
         )
 
+    effective_top_n = get_llm_top_n(len(jobs), override=top_n)
+    candidate_jobs = jobs[:effective_top_n]
+
     if not gemini_rerank_enabled():
-        max_semantic_email_jobs = max(
-            1,
-            _safe_int_env(
-                "JOB_SCRAPER_MAX_SEMANTIC_EMAIL_JOBS",
-                DEFAULT_MAX_SEMANTIC_EMAIL_JOBS,
-            ),
-        )
-        semantic_jobs = jobs[:max_semantic_email_jobs]
         return _build_result(
-            semantic_jobs,
-            semantic_jobs,
+            candidate_jobs,
+            candidate_jobs,
             "semantic",
             llm_shortlisted_jobs=None,
             gemini_reviewed_jobs=None,
         )
-
-    effective_top_n = min(
-        len(jobs),
-        max(1, top_n or _safe_int_env("JOB_SCRAPER_LLM_TOP_N", DEFAULT_TOP_N)),
-    )
-    candidate_jobs = jobs[:effective_top_n]
 
     effective_batch_size = max(
         1,

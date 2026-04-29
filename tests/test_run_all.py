@@ -219,7 +219,59 @@ class RunAllTests(unittest.TestCase):
         self.assertEqual(3, summary["input_jobs"])
         self.assertEqual(1, summary["seen_skipped_jobs"])
         self.assertEqual(2, summary["ranked_jobs_passed_to_review"])
+        self.assertEqual(0, summary["ranked_jobs_not_passed_to_review"])
         self.assertEqual(1, summary["recipient_seen_urls"])
+
+    def test_select_jobs_for_recipient_caps_review_input_with_llm_top_n(self):
+        candidates = [make_job(1), make_job(2), make_job(3)]
+        recipient_profile = {"id": "george"}
+        storage = FakeStorage(set())
+        diagnostics = FakeDiagnostics()
+        ranked_jobs = [make_job(1), make_job(2), make_job(3)]
+        ranking_stats = {
+            "input_jobs": len(ranked_jobs),
+            "hard_filtered_jobs": 0,
+            "below_threshold_jobs": 0,
+            "ranked_jobs": len(ranked_jobs),
+            "hard_filter_reasons": {},
+        }
+        review_result = {
+            "jobs_to_send": [make_job(1)],
+            "reviewed_jobs": [make_job(1)],
+            "review_mode": "gemini",
+            "llm_shortlisted_jobs": 1,
+            "gemini_reviewed_jobs": 1,
+            "review_error": None,
+        }
+
+        with (
+            patch.dict("os.environ", {"JOB_SCRAPER_LLM_TOP_N": "1"}),
+            patch(
+                "run_all.rank_jobs",
+                return_value=(ranked_jobs, ranking_stats),
+            ),
+            patch(
+                "run_all.rerank_jobs_with_gemini",
+                return_value=review_result,
+            ) as rerank_mock,
+        ):
+            select_jobs_for_recipient(
+                candidates,
+                recipient_profile,
+                storage,
+                diagnostics,
+            )
+
+        rerank_input_jobs = rerank_mock.call_args.args[0]
+        self.assertEqual(
+            ["https://example.com/job-1"],
+            [job["url"] for job in rerank_input_jobs],
+        )
+        summary = diagnostics.calls[0][1]
+        self.assertEqual(3, summary["ranked_jobs"])
+        self.assertEqual(1, summary["ranked_jobs_passed_to_review"])
+        self.assertEqual(2, summary["ranked_jobs_not_passed_to_review"])
+        self.assertEqual(0, summary["recipient_seen_urls"])
 
     def test_process_recipient_sends_digest_and_stores_reviewed_jobs(self):
         recipient_profile = {"id": "george", "email": "george@example.com"}
