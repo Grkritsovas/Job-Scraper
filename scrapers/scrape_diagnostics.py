@@ -220,6 +220,8 @@ class ScrapeDiagnostics:
                 f"enriched_jobs={summary.get('enriched_jobs', 0)} "
                 f"recipients={summary.get('recipient_count', 0)} "
                 f"jobs_sent={summary.get('jobs_sent', 0)} "
+                f"jobs_queued={summary.get('jobs_queued', 0)} "
+                f"queued_delivered={summary.get('queued_jobs_delivered', 0)} "
                 f"reviewed_jobs={summary.get('reviewed_jobs', 0)} "
                 f"source_failures={len(self.source_failures)} "
                 f"failed_sources={source_failure_sources} "

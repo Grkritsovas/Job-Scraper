@@ -323,6 +323,63 @@ class StorageTests(unittest.TestCase):
             storage.count_recent_pending_job_backlog(max_age_hours=48),
         )
 
+    def test_digest_queue_round_trip_and_marks_sent(self):
+        db_path = (self.test_dir / "digest_queue.db").resolve()
+        storage = create_storage(f"sqlite:///{db_path}")
+        storage.ensure_schema()
+        job = {
+            "url": "https://example.com/queued",
+            "source": "ashby",
+            "company": "Example",
+            "title": "Queued Job",
+            "location": "London",
+            "why_apply": "Good fit.",
+        }
+        storage.store_job_state_rows(
+            "recipient-a",
+            "support-run",
+            [
+                {
+                    "job_url": job["url"],
+                    "source_type": job["source"],
+                    "company_name": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "review_family": "gemini",
+                    "classification": "gemini_pass2_approved_queued_seen",
+                    "stage": "gemini_pass2",
+                    "is_seen": True,
+                    "sent": False,
+                }
+            ],
+        )
+        storage.store_digest_queue_jobs("recipient-a", "support-run", [job])
+
+        self.assertEqual([job], storage.load_digest_queue_jobs("recipient-a"))
+
+        storage.mark_digest_queue_jobs_sent(
+            "recipient-a",
+            [job["url"]],
+            run_id="main-run",
+        )
+
+        self.assertEqual([], storage.load_digest_queue_jobs("recipient-a"))
+        connection = storage._connect_sqlite()
+        try:
+            row = connection.execute(
+                """
+                SELECT sent, classification, run_id
+                FROM recipient_seen_jobs
+                WHERE recipient_id = ?
+                  AND job_url = ?
+                """,
+                ("recipient-a", job["url"]),
+            ).fetchone()
+        finally:
+            connection.close()
+
+        self.assertEqual((1, "gemini_pass2_approved_sent_seen", "main-run"), row)
+
 
 if __name__ == "__main__":
     unittest.main()

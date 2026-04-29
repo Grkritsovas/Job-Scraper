@@ -37,12 +37,24 @@ class FakeStorage:
         self._seen_urls = set(seen_urls)
         self.stored = []
         self.audit_rows = []
+        self.queued_jobs = []
+        self.queue_jobs_to_load = []
+        self.marked_sent = []
 
     def load_seen_urls(self, recipient_id):
         return set(self._seen_urls)
 
     def store_seen_jobs(self, recipient_id, jobs):
         self.stored.append((recipient_id, list(jobs)))
+
+    def store_digest_queue_jobs(self, recipient_id, run_id, jobs):
+        self.queued_jobs.append((recipient_id, run_id, list(jobs)))
+
+    def load_digest_queue_jobs(self, recipient_id):
+        return list(self.queue_jobs_to_load)
+
+    def mark_digest_queue_jobs_sent(self, recipient_id, job_urls, run_id=None):
+        self.marked_sent.append((recipient_id, list(job_urls), run_id))
 
     def store_review_audit_rows(self, recipient_id, run_id, rows):
         self.audit_rows.append((recipient_id, run_id, list(rows)))
@@ -427,6 +439,101 @@ class RunAllTests(unittest.TestCase):
             "pending_review",
             state_by_url["https://example.com/gemini-failed"]["processing_status"],
         )
+
+    def test_support_run_queues_digest_jobs_without_sending(self):
+        recipient_profile = {"id": "george", "email": "george@example.com"}
+        storage = FakeStorage(set())
+        diagnostics = FakeDiagnostics()
+        review_result = {
+            "jobs_to_send": [make_job(1)],
+            "reviewed_jobs": [make_job(1)],
+            "seen_jobs": [make_job(1)],
+            "review_mode": "gemini",
+            "llm_shortlisted_jobs": 1,
+            "gemini_reviewed_jobs": 1,
+            "audit_rows": [
+                {
+                    "job_url": "https://example.com/job-1",
+                    "source_type": "example",
+                    "company_name": "Example",
+                    "title": "Software Engineer 1",
+                    "location": "London",
+                    "review_family": "gemini",
+                    "classification": "gemini_pass2_approved_sent_seen",
+                    "stage": "gemini_pass2",
+                    "seen_recorded": True,
+                    "sent": True,
+                }
+            ],
+        }
+
+        with (
+            patch("run_all.select_jobs_for_recipient", return_value=review_result),
+            patch("run_all.send_digest") as send_digest_mock,
+        ):
+            result = process_recipient(
+                recipient_profile,
+                [make_job(1)],
+                storage,
+                diagnostics,
+                run_id="support-run",
+                support_run=True,
+            )
+
+        send_digest_mock.assert_not_called()
+        self.assertEqual(
+            [("george", "support-run", [make_job(1)])],
+            storage.queued_jobs,
+        )
+        self.assertEqual([], result["jobs_to_send"])
+        self.assertEqual([make_job(1)], result["queued_jobs"])
+        self.assertEqual(1, result["jobs_queued_count"])
+        stored_audit = storage.audit_rows[0][2][0]
+        self.assertEqual(
+            "gemini_pass2_approved_queued_seen",
+            stored_audit["classification"],
+        )
+        self.assertFalse(stored_audit["sent"])
+
+    def test_main_run_sends_queued_jobs_with_current_digest(self):
+        recipient_profile = {"id": "george", "email": "george@example.com"}
+        storage = FakeStorage(set())
+        diagnostics = FakeDiagnostics()
+        queued_job = {**make_job(2), "why_apply": "Queued from support run."}
+        storage.queue_jobs_to_load = [queued_job]
+        review_result = {
+            "jobs_to_send": [make_job(1)],
+            "reviewed_jobs": [make_job(1)],
+            "seen_jobs": [make_job(1)],
+            "review_mode": "gemini",
+            "llm_shortlisted_jobs": 1,
+            "gemini_reviewed_jobs": 1,
+            "audit_rows": [],
+        }
+
+        with (
+            patch("run_all.select_jobs_for_recipient", return_value=review_result),
+            patch("run_all.send_digest") as send_digest_mock,
+        ):
+            result = process_recipient(
+                recipient_profile,
+                [make_job(1)],
+                storage,
+                diagnostics,
+                run_id="main-run",
+            )
+
+        send_digest_mock.assert_called_once_with(
+            recipient_profile,
+            [make_job(1), queued_job],
+        )
+        self.assertEqual(
+            [("george", ["https://example.com/job-2"], "main-run")],
+            storage.marked_sent,
+        )
+        self.assertEqual([make_job(1), queued_job], result["jobs_to_send"])
+        self.assertEqual([queued_job], result["queued_jobs_delivered"])
+        self.assertEqual(2, result["jobs_sent_count"])
 
     def test_merge_seen_jobs_dedupes_urls(self):
         merged = merge_seen_jobs(

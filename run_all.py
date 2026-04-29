@@ -38,6 +38,11 @@ def build_parser():
             "The snapshot can include job descriptions and candidate summaries."
         ),
     )
+    parser.add_argument(
+        "--support-run",
+        action="store_true",
+        help="Review backlog candidates but queue approved jobs for the next main digest.",
+    )
     return parser
 
 
@@ -206,6 +211,10 @@ def merge_seen_jobs(*job_groups):
     return merged_jobs
 
 
+def merge_digest_jobs(*job_groups):
+    return merge_seen_jobs(*job_groups)
+
+
 def build_review_audit_rows(ranking_audit_rows, review_result):
     review_audit_rows = list(review_result.get("audit_rows") or [])
     review_audit_urls = {
@@ -259,6 +268,52 @@ def build_job_state_rows(audit_rows):
         if state_row is not None:
             state_rows.append(state_row)
     return state_rows
+
+
+def mark_result_jobs_queued_for_digest(review_result):
+    queued_jobs = list(review_result.get("jobs_to_send") or [])
+    queued_urls = {job.get("url") for job in queued_jobs if job.get("url")}
+    if not queued_urls:
+        review_result["queued_jobs"] = []
+        review_result["jobs_queued_count"] = 0
+        return review_result
+
+    review_result["audit_rows"] = [
+        mark_audit_row_queued_for_digest(row, queued_urls)
+        for row in review_result.get("audit_rows", [])
+    ]
+    review_result["job_state_rows"] = build_job_state_rows(
+        review_result["audit_rows"],
+    )
+    review_result["seen_recorded_count"] = count_seen_job_state_rows(
+        review_result["job_state_rows"],
+        fallback_count=len(review_result.get("seen_jobs") or []),
+    )
+    review_result["queued_jobs"] = queued_jobs
+    review_result["jobs_queued_count"] = len(queued_jobs)
+    review_result["jobs_to_send"] = []
+    review_result["jobs_sent_count"] = 0
+    return review_result
+
+
+def mark_audit_row_queued_for_digest(row, queued_urls):
+    if row.get("job_url") not in queued_urls or not row.get("sent"):
+        return row
+
+    classification = row.get("classification", "")
+    if classification == "gemini_pass2_approved_sent_seen":
+        classification = "gemini_pass2_approved_queued_seen"
+    elif classification == "semantic_above_threshold":
+        classification = "semantic_above_threshold_queued_seen"
+
+    metadata = dict(row.get("metadata") or {})
+    metadata["queued_for_digest"] = True
+    return {
+        **row,
+        "classification": classification,
+        "sent": False,
+        "metadata": metadata,
+    }
 
 
 def count_seen_job_state_rows(job_state_rows, fallback_count=0):
@@ -340,7 +395,14 @@ def recipient_worker_count(recipient_profiles):
     return min(len(recipient_profiles), configured)
 
 
-def process_recipient(recipient_profile, candidates, storage, diagnostics, run_id=None):
+def process_recipient(
+    recipient_profile,
+    candidates,
+    storage,
+    diagnostics,
+    run_id=None,
+    support_run=False,
+):
     run_id = run_id or build_run_id()
     review_result = select_jobs_for_recipient(
         candidates,
@@ -351,8 +413,32 @@ def process_recipient(recipient_profile, candidates, storage, diagnostics, run_i
     jobs_to_send = review_result["jobs_to_send"]
     reviewed_jobs = review_result["reviewed_jobs"]
     seen_jobs = review_result.get("seen_jobs", reviewed_jobs)
-    if jobs_to_send:
-        send_digest(recipient_profile, jobs_to_send)
+
+    if support_run:
+        if jobs_to_send and hasattr(storage, "store_digest_queue_jobs"):
+            storage.store_digest_queue_jobs(
+                recipient_profile["id"],
+                run_id,
+                jobs_to_send,
+            )
+        review_result = mark_result_jobs_queued_for_digest(review_result)
+    else:
+        queued_jobs = []
+        if hasattr(storage, "load_digest_queue_jobs"):
+            queued_jobs = storage.load_digest_queue_jobs(recipient_profile["id"])
+        digest_jobs = merge_digest_jobs(jobs_to_send, queued_jobs)
+        if digest_jobs:
+            send_digest(recipient_profile, digest_jobs)
+        if queued_jobs and hasattr(storage, "mark_digest_queue_jobs_sent"):
+            storage.mark_digest_queue_jobs_sent(
+                recipient_profile["id"],
+                [job.get("url") for job in queued_jobs],
+                run_id=run_id,
+            )
+        review_result["queued_jobs_delivered"] = queued_jobs
+        review_result["jobs_sent_count"] = len(digest_jobs)
+        review_result["jobs_to_send"] = digest_jobs
+
     job_state_rows = review_result.get("job_state_rows") or []
     if job_state_rows and hasattr(storage, "store_job_state_rows"):
         storage.store_job_state_rows(
@@ -371,7 +457,14 @@ def process_recipient(recipient_profile, candidates, storage, diagnostics, run_i
     return review_result
 
 
-def process_recipients(recipient_profiles, candidates, storage, diagnostics, run_id=None):
+def process_recipients(
+    recipient_profiles,
+    candidates,
+    storage,
+    diagnostics,
+    run_id=None,
+    support_run=False,
+):
     run_id = run_id or build_run_id()
     worker_count = recipient_worker_count(recipient_profiles)
     if worker_count == 1:
@@ -382,6 +475,7 @@ def process_recipients(recipient_profiles, candidates, storage, diagnostics, run
                 storage,
                 diagnostics,
                 run_id,
+                support_run=support_run,
             )
             for recipient_profile in recipient_profiles
         ]
@@ -396,6 +490,7 @@ def process_recipients(recipient_profiles, candidates, storage, diagnostics, run
                 storage,
                 diagnostics,
                 run_id,
+                support_run=support_run,
             ): recipient_profile["id"]
             for recipient_profile in recipient_profiles
         }
@@ -425,12 +520,19 @@ def build_run_summary(candidates, enriched_candidates, recipient_profiles, resul
         "candidate_jobs": len(candidates),
         "enriched_jobs": len(enriched_candidates),
         "recipient_count": len(recipient_profiles),
-        "jobs_sent": sum(len(result.get("jobs_to_send") or []) for result in results),
+        "jobs_sent": sum(
+            result.get("jobs_sent_count", len(result.get("jobs_to_send") or []))
+            for result in results
+        ),
         "reviewed_jobs": sum(
             len(result.get("reviewed_jobs") or []) for result in results
         ),
         "review_modes": dict(review_modes),
         "gemini_failure_stages": dict(gemini_failure_stages),
+        "jobs_queued": sum(result.get("jobs_queued_count", 0) for result in results),
+        "queued_jobs_delivered": sum(
+            len(result.get("queued_jobs_delivered") or []) for result in results
+        ),
     }
 
 
@@ -498,6 +600,7 @@ def main(argv=None):
         storage,
         diagnostics,
         run_id,
+        support_run=args.support_run,
     )
     run_summary = build_run_summary(
         candidates,

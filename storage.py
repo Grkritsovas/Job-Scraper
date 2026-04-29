@@ -72,6 +72,42 @@ POSTGRES_SEEN_JOBS_SCHEMA_STATEMENTS = [
     """,
 ]
 
+SQLITE_DIGEST_QUEUE_SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS recipient_digest_queue (
+        recipient_id TEXT NOT NULL,
+        job_url TEXT NOT NULL,
+        job_json TEXT NOT NULL,
+        queued_run_id TEXT,
+        first_queued_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (recipient_id, job_url)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_recipient_digest_queue_recipient
+    ON recipient_digest_queue (recipient_id, first_queued_at)
+    """,
+]
+
+POSTGRES_DIGEST_QUEUE_SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS app_config.recipient_digest_queue (
+        recipient_id TEXT NOT NULL,
+        job_url TEXT NOT NULL,
+        job_json JSONB NOT NULL,
+        queued_run_id TEXT,
+        first_queued_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (recipient_id, job_url)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_recipient_digest_queue_recipient
+    ON app_config.recipient_digest_queue (recipient_id, first_queued_at)
+    """,
+]
+
 SQLITE_REVIEW_AUDIT_SCHEMA_STATEMENTS = [
     """
     CREATE TABLE IF NOT EXISTS recipient_review_audit (
@@ -607,6 +643,164 @@ class Storage:
         finally:
             connection.close()
 
+    def store_digest_queue_jobs(self, recipient_id, run_id, jobs):
+        rows = [
+            (
+                recipient_id,
+                job.get("url", ""),
+                json.dumps(job, ensure_ascii=True, default=str),
+                run_id,
+            )
+            for job in jobs or []
+            if job.get("url")
+        ]
+        if not rows:
+            return
+
+        if self.backend == "sqlite":
+            connection = self._connect_sqlite()
+            try:
+                connection.executemany(
+                    """
+                    INSERT INTO recipient_digest_queue (
+                        recipient_id,
+                        job_url,
+                        job_json,
+                        queued_run_id,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(recipient_id, job_url) DO UPDATE SET
+                        job_json = excluded.job_json,
+                        queued_run_id = excluded.queued_run_id,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    rows,
+                )
+                connection.commit()
+            finally:
+                connection.close()
+            return
+
+        connection = self._connect_postgres()
+        try:
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    INSERT INTO app_config.recipient_digest_queue (
+                        recipient_id,
+                        job_url,
+                        job_json,
+                        queued_run_id,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s::jsonb, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (recipient_id, job_url) DO UPDATE SET
+                        job_json = EXCLUDED.job_json,
+                        queued_run_id = EXCLUDED.queued_run_id,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    rows,
+                )
+            connection.commit()
+        finally:
+            connection.close()
+
+    def load_digest_queue_jobs(self, recipient_id):
+        rows = self._fetch_all(
+            self._sql(
+                f"""
+                SELECT job_json
+                FROM {self._digest_queue_table_name()}
+                WHERE recipient_id = {{placeholder}}
+                ORDER BY first_queued_at ASC, updated_at ASC
+                """
+            ),
+            (recipient_id,),
+        )
+        jobs = []
+        for row in rows:
+            parsed = self._load_json_field(row.get("job_json"))
+            if isinstance(parsed, dict) and parsed.get("url"):
+                jobs.append(parsed)
+        return jobs
+
+    def mark_digest_queue_jobs_sent(self, recipient_id, job_urls, run_id=None):
+        clean_urls = [url for url in dict.fromkeys(job_urls or []) if url]
+        if not clean_urls:
+            return
+
+        if self.backend == "sqlite":
+            connection = self._connect_sqlite()
+            try:
+                for job_url in clean_urls:
+                    connection.execute(
+                        """
+                        UPDATE recipient_seen_jobs
+                        SET
+                            sent = 1,
+                            run_id = COALESCE(?, run_id),
+                            classification = CASE classification
+                                WHEN 'gemini_pass2_approved_queued_seen'
+                                    THEN 'gemini_pass2_approved_sent_seen'
+                                WHEN 'semantic_above_threshold_queued_seen'
+                                    THEN 'semantic_above_threshold_sent_seen'
+                                ELSE classification
+                            END,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE recipient_id = ?
+                          AND job_url = ?
+                        """,
+                        (run_id, recipient_id, job_url),
+                    )
+                    connection.execute(
+                        """
+                        DELETE FROM recipient_digest_queue
+                        WHERE recipient_id = ?
+                          AND job_url = ?
+                        """,
+                        (recipient_id, job_url),
+                    )
+                connection.commit()
+            finally:
+                connection.close()
+            return
+
+        connection = self._connect_postgres()
+        try:
+            with connection.cursor() as cursor:
+                for job_url in clean_urls:
+                    cursor.execute(
+                        """
+                        UPDATE app_config.recipient_seen_jobs
+                        SET
+                            sent = TRUE,
+                            run_id = COALESCE(%s, run_id),
+                            classification = CASE classification
+                                WHEN 'gemini_pass2_approved_queued_seen'
+                                    THEN 'gemini_pass2_approved_sent_seen'
+                                WHEN 'semantic_above_threshold_queued_seen'
+                                    THEN 'semantic_above_threshold_sent_seen'
+                                ELSE classification
+                            END,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE recipient_id = %s
+                          AND job_url = %s
+                        """,
+                        (run_id, recipient_id, job_url),
+                    )
+                    cursor.execute(
+                        """
+                        DELETE FROM app_config.recipient_digest_queue
+                        WHERE recipient_id = %s
+                          AND job_url = %s
+                        """,
+                        (recipient_id, job_url),
+                    )
+            connection.commit()
+        finally:
+            connection.close()
+
     def store_review_audit_rows(self, recipient_id, run_id, audit_rows):
         rows = [
             self._normalize_review_audit_row(recipient_id, run_id, row)
@@ -878,6 +1072,8 @@ class Storage:
         try:
             for statement in SQLITE_SEEN_JOBS_SCHEMA_STATEMENTS:
                 connection.execute(statement)
+            for statement in SQLITE_DIGEST_QUEUE_SCHEMA_STATEMENTS:
+                connection.execute(statement)
             self._ensure_sqlite_columns(
                 connection,
                 "recipient_seen_jobs",
@@ -916,6 +1112,8 @@ class Storage:
             with connection.cursor() as cursor:
                 cursor.execute("CREATE SCHEMA IF NOT EXISTS app_config")
                 for statement in POSTGRES_SEEN_JOBS_SCHEMA_STATEMENTS:
+                    cursor.execute(statement)
+                for statement in POSTGRES_DIGEST_QUEUE_SCHEMA_STATEMENTS:
                     cursor.execute(statement)
                 for statement in POSTGRES_REVIEW_AUDIT_SCHEMA_STATEMENTS:
                     cursor.execute(statement)
@@ -1008,8 +1206,8 @@ class Storage:
                 TRUE,
                 'processed',
                 'seen',
-                first_seen_at,
-                first_seen_at
+                first_seen_at::timestamptz,
+                first_seen_at::timestamptz
             FROM public.recipient_seen_jobs
             ON CONFLICT (recipient_id, job_url) DO NOTHING
             """
@@ -1107,7 +1305,7 @@ class Storage:
                 review_error_stage,
                 review_error,
                 metadata_json,
-                created_at
+                created_at::timestamptz
             FROM public.recipient_review_audit old_audit
             WHERE NOT EXISTS (
                 SELECT 1
@@ -1118,7 +1316,7 @@ class Storage:
                   AND migrated.review_family = old_audit.review_family
                   AND migrated.classification = old_audit.classification
                   AND COALESCE(migrated.stage, '') = COALESCE(old_audit.stage, '')
-                  AND migrated.created_at = old_audit.created_at
+                  AND migrated.created_at = old_audit.created_at::timestamptz
             )
             """
         )
@@ -1161,6 +1359,11 @@ class Storage:
         if self.backend == "sqlite":
             return "recipient_seen_jobs"
         return "app_config.recipient_seen_jobs"
+
+    def _digest_queue_table_name(self):
+        if self.backend == "sqlite":
+            return "recipient_digest_queue"
+        return "app_config.recipient_digest_queue"
 
     def _seen_jobs_conflict_target_name(self):
         return "recipient_seen_jobs"

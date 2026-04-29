@@ -44,6 +44,13 @@ executes the scraper normally. This gives above-threshold jobs that missed the
 top-N review cap, or jobs blocked by a temporary Gemini outage, another chance to
 be reviewed without manually starting the workflow.
 
+Support runs are review-only for email delivery. If Gemini approves jobs during a
+support run, those jobs are stored in `recipient_digest_queue` instead of being
+emailed immediately. The next main run sends queued approved jobs together with
+that run's newly approved jobs, then marks the queued rows as sent. This keeps
+backlog processing active without turning support schedules into extra digest
+emails.
+
 ## Review Audit
 
 `recipient_review_audit` (`app_config.recipient_review_audit` on

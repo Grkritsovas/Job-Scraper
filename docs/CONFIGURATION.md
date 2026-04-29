@@ -58,7 +58,11 @@ Semantic matches below the threshold are marked seen after ranking so the same w
 
 ## Support Runs
 
-The workflow has main scheduled runs and lighter support schedules. Main schedules run the full scraper. Support schedules first run `check_review_backlog.py`, which queries recent pending rows in the job state table. If no recent backlog exists, the workflow skips full dependency installation and scraper execution.
+The workflow has main scheduled runs and support schedules. Main schedules run the full scraper. Support schedules first run `check_review_backlog.py`, which queries recent pending rows in the job state table. If no recent backlog exists, the workflow skips full dependency installation and scraper execution.
+
+Current scheduled times are UTC:
+- main runs: `09:30`, `16:30`
+- support checks: `00:00`, `03:00`, `12:00`, `14:00`, `20:00`
 
 `JOB_SCRAPER_SUPPORT_BACKLOG_HOURS` controls the age window for support-run backlog checks. The default is `48` hours.
 
@@ -101,6 +105,12 @@ The scraper stores per-recipient job processing state in:
 - `recipient_seen_jobs` on local SQLite
 
 Rows with `is_seen=true` are skipped in future runs. Rows with `is_seen=false` are pending backlog rows that can be picked up by support runs. Support runs check recent pending rows before installing full scraper dependencies.
+
+Support runs do not send digest emails directly. Approved support-run jobs are queued in:
+- `app_config.recipient_digest_queue` on Postgres/Supabase
+- `recipient_digest_queue` on local SQLite
+
+Main runs send queued approved jobs together with newly approved jobs, then mark the queued rows as sent.
 
 The support-run backlog age is controlled by:
 - `JOB_SCRAPER_SUPPORT_BACKLOG_HOURS`, default `48`
