@@ -152,6 +152,33 @@ class SemanticMatchingTests(unittest.TestCase):
         )
         self.assertEqual("eligibility", reason)
 
+    def test_authorization_ignores_us_applicant_boilerplate_when_uk_section_exists(self):
+        reason = get_hard_filter_reason(
+            make_job(
+                title="Technical Support Specialist",
+                location="London",
+                locations=["London"],
+                description=(
+                    "Hybrid role based out of London. "
+                    "For United States Applicants: the company will confirm that "
+                    "you are authorized to work in the United States. "
+                    "For United Kingdom Applicants: the company will verify your "
+                    "right to work in the UK before employment."
+                ),
+            )
+        )
+        self.assertIsNone(reason)
+
+    def test_authorization_rejects_us_only_requirement(self):
+        reason = get_hard_filter_reason(
+            make_job(
+                description=(
+                    "Candidates must be authorized to work in the United States."
+                ),
+            )
+        )
+        self.assertEqual("authorization", reason)
+
     def test_graduating_between_range_is_not_hard_rejected(self):
         reason = get_hard_filter_reason(
             make_job(

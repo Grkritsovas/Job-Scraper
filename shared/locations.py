@@ -5,6 +5,7 @@ UK_LOCATION_TERMS = {
     "aberdeen",
     "bath",
     "basingstoke",
+    "belfast",
     "blackburn",
     "blackpool",
     "birmingham",
@@ -52,6 +53,7 @@ UK_LOCATION_TERMS = {
     "middlesbrough",
     "newcastle",
     "newport",
+    "northern ireland",
     "oldham",
     "oxford",
     "oxfordshire",
@@ -99,6 +101,7 @@ COUNTRY_LEVEL_UK_PATTERNS = [
     r"remote\s*\(uk\)",
     r"\bengland\b",
     r"\bscotland\b",
+    r"\bnorthern ireland\b",
 ]
 
 FOREIGN_LOCATION_KEYWORDS = [

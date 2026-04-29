@@ -13,6 +13,17 @@ from shared.locations import is_uk_location
 
 
 DEFAULT_MAX_YEARS_EXPERIENCE = 1
+APPLICANT_SECTION_HEADER_PATTERN = re.compile(
+    r"\bfor\s+(?P<region>united states|us|usa|canada|united kingdom|uk)\s+applicants?\s*:",
+    flags=re.IGNORECASE,
+)
+UK_APPLICANT_SECTION_REGIONS = {"united kingdom", "uk"}
+NON_UK_AUTHORIZATION_SECTION_REGIONS = {
+    "united states",
+    "us",
+    "usa",
+    "canada",
+}
 
 EXPERIENCE_PATTERNS = [
     re.compile(r"\b(\d+)\+\s*(?:years?|yrs?|yoe)\b", flags=re.IGNORECASE),
@@ -112,11 +123,42 @@ def get_commercial_reject_terms(recipient_profile=None):
 
 
 def has_authorization_mismatch(description):
-    normalized_description = (description or "").lower()
+    normalized_description = _strip_non_uk_applicant_authorization_sections(
+        description or ""
+    ).lower()
     return any(
         re.search(pattern, normalized_description, flags=re.IGNORECASE)
         for pattern in AUTHORIZATION_MISMATCH_PATTERNS
     )
+
+
+def _strip_non_uk_applicant_authorization_sections(description):
+    section_headers = list(APPLICANT_SECTION_HEADER_PATTERN.finditer(description))
+    if not section_headers:
+        return description
+
+    has_uk_section = any(
+        header.group("region").lower() in UK_APPLICANT_SECTION_REGIONS
+        for header in section_headers
+    )
+    if not has_uk_section:
+        return description
+
+    retained_parts = []
+    cursor = 0
+    for index, header in enumerate(section_headers):
+        region = header.group("region").lower()
+        next_start = (
+            section_headers[index + 1].start()
+            if index + 1 < len(section_headers)
+            else len(description)
+        )
+        if region in NON_UK_AUTHORIZATION_SECTION_REGIONS:
+            retained_parts.append(description[cursor : header.start()])
+            cursor = next_start
+
+    retained_parts.append(description[cursor:])
+    return "".join(retained_parts)
 
 
 def has_eligibility_mismatch(description):

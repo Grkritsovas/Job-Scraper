@@ -11,6 +11,8 @@ class LocationFilteringTests(unittest.TestCase):
         self.assertTrue(is_uk_location(["Newcastle, UK"]))
         self.assertTrue(is_uk_location(["Stockton-on-Tees"]))
         self.assertTrue(is_uk_location(["West Midlands"]))
+        self.assertTrue(is_uk_location(["Belfast"]))
+        self.assertTrue(is_uk_location(["Belfast, Northern Ireland"]))
 
     def test_accepts_common_misspelled_uk_locations_seen_in_feed(self):
         self.assertTrue(is_uk_location(["Cardif (GB)"]))
