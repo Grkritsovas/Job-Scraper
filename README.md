@@ -92,7 +92,7 @@ Sample sponsor list from [Borderless](https://uk-sponsors.getborderless.co.uk/sp
 
 ## License
 
-This project is licensed under the [MIT License](docs/LICENSE).
+This project is licensed under the [MIT License](LICENSE).
 
 ## Responsible Use
 
