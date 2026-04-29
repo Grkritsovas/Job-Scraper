@@ -100,7 +100,7 @@ The intended steady-state runtime is a scheduled GitHub Actions workflow backed 
   Main runtime orchestration.
 - `manage_targets.py`
   Inspect effective scraper targets.
-- `preview_digest.py`
+- `examples/preview_digest.py`
   Generate a local HTML/text digest preview from sample data.
 - `admin_ui.py`
   Run a local admin UI for database-backed recipient profiles and review audit rows.
@@ -180,7 +180,7 @@ The intended steady-state runtime is a scheduled GitHub Actions workflow backed 
 ### Usually safer
 
 - Docs, examples, and contributor tooling.
-- `manage_targets.py` and `preview_digest.py`.
+- `manage_targets.py` and `examples/preview_digest.py`.
 - Pure presentation changes inside `shared/digest.py` that do not change grouping, ordering, or filtering semantics.
 - Adding tests around existing behavior.
 
@@ -251,7 +251,7 @@ venv\Scripts\python.exe -m unittest discover -s tests -v
 ### Preview the digest locally
 
 ```powershell
-python preview_digest.py
+python examples/preview_digest.py
 ```
 
 This writes preview files into `examples/` so you can inspect formatting changes without sending mail.

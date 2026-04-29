@@ -1,4 +1,10 @@
 from pathlib import Path
+import sys
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from shared.digest import build_digest_payloads
 
@@ -92,7 +98,7 @@ def sample_recipient():
 
 
 def main():
-    output_dir = Path("examples")
+    output_dir = Path(__file__).resolve().parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
     payloads = build_digest_payloads(sample_jobs(), sample_recipient())
