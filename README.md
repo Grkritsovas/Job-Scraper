@@ -58,7 +58,7 @@ The full step-by-step setup, variable reference, database-backed recipient profi
 
 Starter config files and example shapes are in [examples/README.md](examples/README.md).
 
-Internal architecture notes, contributor workflows, and agent guardrails are in [CONTRIBUTING.md](CONTRIBUTING.md).
+Internal architecture notes, contributor workflows, and agent guardrails are in [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
 
 ## Local Run
 
@@ -92,7 +92,7 @@ Sample sponsor list from [Borderless](https://uk-sponsors.getborderless.co.uk/sp
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](docs/LICENSE).
 
 ## Responsible Use
 
