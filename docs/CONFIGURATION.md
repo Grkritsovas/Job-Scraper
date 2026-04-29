@@ -27,7 +27,6 @@ Optional GitHub Actions variables:
 - `LEVER_COMPANIES_JSON`
 - `NEXTJS_URLS_JSON`
 - `SPONSOR_COMPANIES_CSV`
-- `SPONSOR_COMPANIES_CSV_TEXT`
 
 ## Runtime Recipient Profiles
 
@@ -252,11 +251,13 @@ Target precedence:
 
 ## Sponsorship Lookup
 
-Supported inputs:
-- `SPONSOR_COMPANIES_CSV_TEXT`
-- `SPONSOR_COMPANIES_CSV`
-- `sponsor_companies.local.csv`
+The default sponsor-company lookup is the checked-in CSV:
 - `data/uk_sponsors_companies.csv`
+
+For local overrides, add an ignored file:
+- `sponsor_companies.local.csv`
+
+For hosted overrides, set `SPONSOR_COMPANIES_CSV` to a CSV file path in the repository. It is a path override, not raw CSV content.
 
 The CSV only needs a `company_name` column.
 

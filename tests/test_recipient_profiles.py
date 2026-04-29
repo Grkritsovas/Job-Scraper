@@ -84,6 +84,47 @@ class RecipientProfilesTests(unittest.TestCase):
             rows[0]["config"]["eligibility"]["work_authorization_summary"],
         )
 
+    def test_normalize_grouped_profile_rejects_unknown_eligibility_fields(self):
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Unknown recipient profile field 'eligibility.education_status'",
+        ):
+            normalize_grouped_profile(
+                {
+                    "id": "demo",
+                    "delivery": {"email": "demo@example.com"},
+                    "candidate": {
+                        "summary": "Profile summary.",
+                        "target_roles": [{"id": "swe"}],
+                    },
+                    "eligibility": {
+                        "needs_sponsorship": False,
+                        "education_status": "Graduated Oct 2025.",
+                    },
+                }
+            )
+
+    def test_normalize_grouped_profile_rejects_unknown_target_role_fields(self):
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Unknown recipient profile field 'candidate.target_roles\\[\\].education_status'",
+        ):
+            normalize_grouped_profile(
+                {
+                    "id": "demo",
+                    "delivery": {"email": "demo@example.com"},
+                    "candidate": {
+                        "summary": "Profile summary.",
+                        "target_roles": [
+                            {
+                                "id": "swe",
+                                "education_status": "Graduated Oct 2025.",
+                            }
+                        ],
+                    },
+                }
+            )
+
     def test_loads_profiles_from_storage(self):
         db_path = self.test_dir / "profiles.db"
         storage = create_storage(f"sqlite:///{db_path}")

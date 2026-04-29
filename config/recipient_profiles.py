@@ -57,6 +57,21 @@ def _to_optional_int(value):
     return int(value)
 
 
+def _reject_unknown_keys(mapping, allowed_keys, context):
+    if not isinstance(mapping, dict):
+        return
+
+    unknown_keys = sorted(set(mapping) - set(allowed_keys))
+    if not unknown_keys:
+        return
+
+    field_path = f"{context}.{unknown_keys[0]}"
+    hint = ""
+    if unknown_keys[0] == "education_status" and context != "candidate":
+        hint = " Use candidate.education_status for graduation/student context."
+    raise RuntimeError(f"Unknown recipient profile field '{field_path}'.{hint}")
+
+
 def _canonical_target_role(entry):
     if isinstance(entry, str):
         profile_id = normalize_profile_id(entry)
@@ -69,6 +84,12 @@ def _canonical_target_role(entry):
         raise RuntimeError(
             "Each candidate.target_roles entry must be a string or object."
         )
+
+    _reject_unknown_keys(
+        entry,
+        {"id", "profile_id", "name", "match_text", "text", "profile_text"},
+        "candidate.target_roles[]",
+    )
 
     raw_id = entry.get("id") or entry.get("profile_id") or entry.get("name")
     if not _normalize_text(raw_id):
@@ -108,6 +129,22 @@ def normalize_grouped_profile(profile, index=0, sender_email=""):
     if not isinstance(profile, dict):
         raise RuntimeError("Each recipient profile must be a JSON object.")
 
+    _reject_unknown_keys(
+        profile,
+        {
+            "id",
+            "enabled",
+            "delivery",
+            "email",
+            "candidate",
+            "job_preferences",
+            "eligibility",
+            "matching",
+            "llm_review",
+        },
+        "profile",
+    )
+
     delivery_config = (
         profile.get("delivery") if isinstance(profile.get("delivery"), dict) else {}
     )
@@ -124,6 +161,44 @@ def normalize_grouped_profile(profile, index=0, sender_email=""):
     eligibility_config = profile.get("eligibility") or {}
     matching_config = profile.get("matching") or {}
     llm_review_config = profile.get("llm_review") or {}
+
+    _reject_unknown_keys(delivery_config, {"email"}, "delivery")
+    _reject_unknown_keys(
+        candidate_config,
+        {"summary", "education_status", "target_roles"},
+        "candidate",
+    )
+    _reject_unknown_keys(
+        preferences_config,
+        {"target_seniority", "salary"},
+        "job_preferences",
+    )
+    _reject_unknown_keys(
+        seniority_config,
+        {"max_explicit_years", "boost_multiplier", "boost_title_terms"},
+        "job_preferences.target_seniority",
+    )
+    _reject_unknown_keys(
+        salary_config,
+        {"preferred_max_gbp", "hard_cap_gbp", "penalty_strength"},
+        "job_preferences.salary",
+    )
+    _reject_unknown_keys(
+        eligibility_config,
+        {
+            "needs_sponsorship",
+            "work_authorization_summary",
+            "check_hard_eligibility",
+            "use_sponsor_lookup",
+        },
+        "eligibility",
+    )
+    _reject_unknown_keys(matching_config, {"semantic_threshold"}, "matching")
+    _reject_unknown_keys(
+        llm_review_config,
+        {"extra_screening_guidance", "extra_final_ranking_guidance"},
+        "llm_review",
+    )
 
     grouped_profile = {
         "id": recipient_id,
