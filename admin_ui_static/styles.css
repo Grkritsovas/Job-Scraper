@@ -222,6 +222,7 @@ p {
   display: flex;
   flex-direction: column;
   padding: 16px;
+  overflow: hidden;
 }
 
 .status-line {
@@ -276,19 +277,172 @@ p {
   line-height: 1.5;
 }
 
-#profileEditor {
+.profile-form {
   flex: 1;
   min-height: 0;
-  width: 100%;
-  resize: none;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.profile-section {
+  --section-accent: var(--accent);
+  --section-bg: #f7faf8;
+  margin-bottom: 12px;
   border: 1px solid var(--line);
+  border-left: 5px solid var(--section-accent);
   border-radius: 8px;
-  padding: 14px;
+  background: var(--section-bg);
+  padding: 12px;
+}
+
+.section-profile {
+  --section-accent: #425a70;
+  --section-bg: #f5f7f9;
+}
+
+.section-candidate {
+  --section-accent: #1f7a67;
+  --section-bg: #f2f8f5;
+}
+
+.section-preferences {
+  --section-accent: #9a5a13;
+  --section-bg: #fbf6eb;
+}
+
+.section-eligibility {
+  --section-accent: #7a4e8a;
+  --section-bg: #f8f3fa;
+}
+
+.section-matching {
+  --section-accent: #276b9f;
+  --section-bg: #eef6fb;
+}
+
+.section-llm {
+  --section-accent: #74631f;
+  --section-bg: #fbf8e9;
+}
+
+.section-heading,
+.array-heading,
+.role-item-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section-heading {
+  margin-bottom: 10px;
+}
+
+.section-heading h4 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+code {
+  border: 1px solid rgba(104, 114, 107, 0.25);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 2px 5px;
+  color: #3e4742;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.field-row {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field-row-wide {
+  grid-column: 1 / -1;
+}
+
+.field-row input,
+.field-row textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
   color: #171a18;
   background: #fcfdfc;
+}
+
+.field-row textarea {
+  resize: vertical;
+  min-height: 78px;
+  padding: 10px;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.45;
+}
+
+.checkbox-row {
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+}
+
+.checkbox-row input {
+  width: 20px;
+  height: 20px;
+  justify-self: end;
+}
+
+.role-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.role-item {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(31, 122, 103, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+  padding: 10px;
+}
+
+.json-preview-panel {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+  padding: 10px;
+}
+
+.json-preview-panel summary {
+  cursor: pointer;
+  color: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#profileEditor {
+  width: 100%;
+  min-height: 260px;
+  margin-top: 10px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  color: #303632;
+  background: #f7f9f7;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .filter-bar {
@@ -407,6 +561,7 @@ input {
 
   .profile-layout,
   .filter-bar,
+  .field-grid,
   .version-controls,
   .audit-row {
     grid-template-columns: 1fr;
