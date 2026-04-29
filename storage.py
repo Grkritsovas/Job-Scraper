@@ -612,6 +612,7 @@ class Storage:
         review_family=None,
         run_id=None,
         latest_first=False,
+        sort=None,
     ):
         filters = []
         params = []
@@ -628,7 +629,7 @@ class Storage:
                 params.append(value)
 
         where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
-        order_direction = "DESC" if latest_first else "ASC"
+        order_clause = self._review_audit_order_clause(sort, latest_first)
         limit_clause = ""
         if limit is not None:
             limit_clause = f"LIMIT {placeholder}"
@@ -639,7 +640,7 @@ class Storage:
             SELECT *
             FROM recipient_review_audit
             {where_clause}
-            ORDER BY created_at {order_direction}, audit_id {order_direction}
+            ORDER BY {order_clause}
             {limit_clause}
             """,
             tuple(params),
@@ -765,6 +766,30 @@ class Storage:
             for value in dict.fromkeys(values)
             if value not in (None, "")
         ]
+
+    @staticmethod
+    def _review_audit_order_clause(sort, latest_first=False):
+        orderings = {
+            "semantic_score_desc": (
+                "semantic_score IS NULL ASC, semantic_score DESC, "
+                "semantic_rank IS NULL ASC, semantic_rank ASC, audit_id ASC"
+            ),
+            "semantic_score_asc": (
+                "semantic_score IS NULL ASC, semantic_score ASC, "
+                "semantic_rank IS NULL ASC, semantic_rank DESC, audit_id ASC"
+            ),
+            "semantic_rank": (
+                "semantic_rank IS NULL ASC, semantic_rank ASC, audit_id ASC"
+            ),
+            "oldest": "created_at ASC, audit_id ASC",
+            "latest": "created_at DESC, audit_id DESC",
+        }
+        if sort in orderings:
+            return orderings[sort]
+
+        if latest_first:
+            return orderings["latest"]
+        return orderings["oldest"]
 
     def _review_audit_row_count(self):
         rows = self._fetch_all(

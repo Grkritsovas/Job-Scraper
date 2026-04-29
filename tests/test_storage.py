@@ -164,6 +164,18 @@ class StorageTests(unittest.TestCase):
             classification="semantic_above_threshold",
             latest_first=True,
         )
+        weakest = storage.load_review_audit_rows(
+            limit=2,
+            recipient_id="recipient-a",
+            classification="semantic_above_threshold",
+            sort="semantic_score_asc",
+        )
+        strongest = storage.load_review_audit_rows(
+            limit=2,
+            recipient_id="recipient-a",
+            classification="semantic_above_threshold",
+            sort="semantic_score_desc",
+        )
         filter_values = storage.load_review_audit_filter_values()
 
         self.assertEqual(3, deleted)
@@ -182,6 +194,14 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(
             ["https://example.com/job-6", "https://example.com/job-5"],
             [row["job_url"] for row in latest],
+        )
+        self.assertEqual(
+            ["https://example.com/job-4", "https://example.com/job-5"],
+            [row["job_url"] for row in weakest],
+        )
+        self.assertEqual(
+            ["https://example.com/job-6", "https://example.com/job-5"],
+            [row["job_url"] for row in strongest],
         )
         self.assertEqual(["recipient-a"], filter_values["recipient_ids"])
         self.assertEqual(["semantic"], filter_values["review_families"])

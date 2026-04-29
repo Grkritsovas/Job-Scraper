@@ -112,6 +112,16 @@
               Limit
               <input id="auditLimit" type="number" min="1" max="500" value="150">
             </label>
+            <label>
+              Sort
+              <select id="auditSort">
+                <option value="semantic_score_desc">Strongest score</option>
+                <option value="semantic_score_asc">Weakest score</option>
+                <option value="semantic_rank">Semantic rank</option>
+                <option value="latest">Newest</option>
+                <option value="oldest">Oldest</option>
+              </select>
+            </label>
           </form>
 
           <div id="auditSummary" class="summary-strip"></div>

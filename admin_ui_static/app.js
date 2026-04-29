@@ -23,6 +23,7 @@ const els = {
   auditClassification: document.getElementById("auditClassification"),
   auditRun: document.getElementById("auditRun"),
   auditLimit: document.getElementById("auditLimit"),
+  auditSort: document.getElementById("auditSort"),
   auditSummary: document.getElementById("auditSummary"),
   auditRows: document.getElementById("auditRows"),
 };
@@ -582,6 +583,7 @@ async function loadAudit() {
     ["classification", els.auditClassification],
     ["run_id", els.auditRun],
     ["limit", els.auditLimit],
+    ["sort", els.auditSort],
   ]) {
     if (element.value) {
       params.set(name, element.value);
@@ -635,6 +637,7 @@ function renderAuditRows(rows) {
       </div>
       <div class="audit-meta">
         ${scoreLine(row)}
+        ${semanticLine(row)}
         ${row.hard_filter_reason ? `<div>Hard filter: ${escapeHtml(row.hard_filter_reason)}</div>` : ""}
         ${row.gemini_reason ? `<div>Gemini: ${escapeHtml(row.gemini_reason)}</div>` : ""}
         ${row.review_error_stage ? `<div>Error stage: ${escapeHtml(row.review_error_stage)}</div>` : ""}
@@ -662,6 +665,31 @@ function scoreLine(row) {
     parts.push(`pass2 ${row.gemini_pass2_score}`);
   }
   return parts.length ? `<div>${escapeHtml(parts.join(" - "))}</div>` : "";
+}
+
+function semanticLine(row) {
+  const lines = [];
+  if (row.semantic_rank !== null && row.semantic_rank !== undefined) {
+    lines.push(`rank ${row.semantic_rank}`);
+  }
+  if (row.semantic_top_profile) {
+    lines.push(`top ${row.semantic_top_profile}`);
+  }
+  if (row.semantic_second_profile) {
+    lines.push(`second ${row.semantic_second_profile}`);
+  }
+  if (row.title_boost_multiplier && Number(row.title_boost_multiplier) !== 1) {
+    lines.push(`title boost x${Number(row.title_boost_multiplier).toFixed(2)}`);
+  }
+  if (row.salary_penalty_applied) {
+    lines.push(`salary penalty ${Number(row.salary_penalty_applied).toFixed(3)}`);
+  }
+
+  const fitSummary = row.semantic_fit_summary
+    ? `<div class="audit-evidence">Fit: ${escapeHtml(row.semantic_fit_summary)}</div>`
+    : "";
+  const compact = lines.length ? `<div>${escapeHtml(lines.join(" - "))}</div>` : "";
+  return compact + fitSummary;
 }
 
 function evidenceBlock(label, values) {

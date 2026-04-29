@@ -107,7 +107,7 @@ class AdminController:
             classification=filters.get("classification"),
             review_family=filters.get("review_family"),
             run_id=filters.get("run_id"),
-            latest_first=True,
+            sort=filters.get("sort") or "semantic_score_desc",
         )
         parsed_rows = [self._parse_audit_row(row) for row in rows]
         return {

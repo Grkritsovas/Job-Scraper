@@ -102,6 +102,7 @@ class AdminUiTests(unittest.TestCase):
                     "stage": "semantic_ranking",
                     "semantic_score": 0.56,
                     "semantic_threshold": 0.42,
+                    "semantic_top_profile": "SWE",
                 },
                 {
                     "job_url": "https://example.com/job-2",
@@ -122,11 +123,13 @@ class AdminUiTests(unittest.TestCase):
                 "recipient_id": "demo-recipient",
                 "classification": "semantic_above_threshold",
                 "limit": "10",
+                "sort": "semantic_score_desc",
             }
         )
 
         self.assertEqual(1, payload["summary"]["row_count"])
         self.assertEqual("semantic_above_threshold", payload["rows"][0]["classification"])
+        self.assertEqual("SWE", payload["rows"][0]["semantic_top_profile"])
         self.assertEqual({"semantic_above_threshold": 1}, payload["summary"]["classifications"])
 
         options = self.controller.audit_filter_values()
