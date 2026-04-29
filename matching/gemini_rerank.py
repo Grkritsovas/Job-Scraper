@@ -249,6 +249,7 @@ def _base_gemini_audit_row(
         "seen_recorded": seen_recorded,
         "sent": sent,
         "semantic_rank": job.get("semantic_rank"),
+        "raw_embedding_score": job.get("raw_embedding_score"),
         "semantic_score": job.get("semantic_ranking_score", job.get("ranking_score")),
         "semantic_threshold": job.get("semantic_threshold"),
         "semantic_top_profile": job.get("top_profile"),

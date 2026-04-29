@@ -147,6 +147,7 @@ class StorageTests(unittest.TestCase):
                 "classification": "semantic_above_threshold",
                 "stage": "semantic_ranking",
                 "semantic_rank": index,
+                "raw_embedding_score": 0.7 - index / 100,
                 "semantic_score": 0.5 + index / 100,
                 "semantic_threshold": 0.42,
                 "supporting_evidence": ["Python"],
@@ -176,6 +177,12 @@ class StorageTests(unittest.TestCase):
             classification="semantic_above_threshold",
             sort="semantic_score_desc",
         )
+        strongest_raw = storage.load_review_audit_rows(
+            limit=2,
+            recipient_id="recipient-a",
+            classification="semantic_above_threshold",
+            sort="raw_embedding_score_desc",
+        )
         filter_values = storage.load_review_audit_filter_values()
 
         self.assertEqual(3, deleted)
@@ -191,6 +198,7 @@ class StorageTests(unittest.TestCase):
         self.assertEqual("recipient-a", loaded[0]["recipient_id"])
         self.assertEqual("run-1", loaded[0]["run_id"])
         self.assertEqual("semantic_above_threshold", loaded[0]["classification"])
+        self.assertAlmostEqual(0.66, loaded[0]["raw_embedding_score"])
         self.assertEqual(
             ["https://example.com/job-6", "https://example.com/job-5"],
             [row["job_url"] for row in latest],
@@ -202,6 +210,10 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(
             ["https://example.com/job-6", "https://example.com/job-5"],
             [row["job_url"] for row in strongest],
+        )
+        self.assertEqual(
+            ["https://example.com/job-4", "https://example.com/job-5"],
+            [row["job_url"] for row in strongest_raw],
         )
         self.assertEqual(["recipient-a"], filter_values["recipient_ids"])
         self.assertEqual(["semantic"], filter_values["review_families"])

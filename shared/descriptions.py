@@ -11,12 +11,29 @@ HEADERS = {
 
 MIN_VISIBLE_TEXT_LENGTH = 200
 MATCHING_TEXT_SUFFIX_PATTERNS = [
+    re.compile(r"\bwhat we offer\b", flags=re.IGNORECASE),
+    re.compile(r"\bour benefits\b", flags=re.IGNORECASE),
+    re.compile(r"\bemployee benefits\b", flags=re.IGNORECASE),
+    re.compile(r"\bbenefits\s+(?:and|&)\s+perks\b", flags=re.IGNORECASE),
+    re.compile(r"\bperks\s+(?:and|&)\s+benefits\b", flags=re.IGNORECASE),
+    re.compile(r"\bcompensation\s+(?:and|&)\s+benefits\b", flags=re.IGNORECASE),
+    re.compile(r"\bbenefits package\b", flags=re.IGNORECASE),
+    re.compile(r"\bour culture\b", flags=re.IGNORECASE),
+    re.compile(r"\bhow we work\b", flags=re.IGNORECASE),
     re.compile(
-        r"\bour commitment to diversity, equity, inclusion(?:\s+and\s+belonging)?\b",
+        r"\b(?:our\s+)?commitment to diversity,?\s+equity(?:,?\s+and\s+inclusion|,?\s+inclusion)(?:\s+and\s+belonging)?\b",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bdiversity,?\s+equity(?:,?\s+and\s+inclusion|,?\s+inclusion)(?:\s+and\s+belonging)?\b",
         flags=re.IGNORECASE,
     ),
     re.compile(r"\bfraud recruitment disclaimer\b", flags=re.IGNORECASE),
+    re.compile(r"\brecruitment fraud\b", flags=re.IGNORECASE),
+    re.compile(r"\bequal opportunity employer\b", flags=re.IGNORECASE),
     re.compile(r"\bequal employment opportunity\b", flags=re.IGNORECASE),
+    re.compile(r"\breasonable accommodation\b", flags=re.IGNORECASE),
+    re.compile(r"\baccommodation for applicants\b", flags=re.IGNORECASE),
     re.compile(
         r"\bwe will ensure that individuals with disabilities are provided reasonable accommodation\b",
         flags=re.IGNORECASE,
@@ -26,6 +43,27 @@ MATCHING_TEXT_SUFFIX_PATTERNS = [
         flags=re.IGNORECASE,
     ),
 ]
+ROLE_SECTION_START_PATTERNS = [
+    re.compile(r"\bthe role,?\s+in a nutshell\b", flags=re.IGNORECASE),
+    re.compile(r"\babout the role\b", flags=re.IGNORECASE),
+    re.compile(r"\babout this role\b", flags=re.IGNORECASE),
+    re.compile(r"\brole overview\b", flags=re.IGNORECASE),
+    re.compile(r"\bjob description\b", flags=re.IGNORECASE),
+    re.compile(r"\bwhat you(?:['\u2019]ll| will) do\b", flags=re.IGNORECASE),
+    re.compile(r"\bwhat you(?:['\u2019]ll| will) be doing\b", flags=re.IGNORECASE),
+    re.compile(r"\byour impact\b", flags=re.IGNORECASE),
+    re.compile(r"\bkey responsibilities\b", flags=re.IGNORECASE),
+    re.compile(r"\bresponsibilities\b", flags=re.IGNORECASE),
+    re.compile(r"\brequirements\b", flags=re.IGNORECASE),
+    re.compile(r"\bqualifications\b", flags=re.IGNORECASE),
+    re.compile(r"\babout you\b", flags=re.IGNORECASE),
+    re.compile(r"\bwho you are\b", flags=re.IGNORECASE),
+    re.compile(r"\byour experience\b", flags=re.IGNORECASE),
+    re.compile(r"\bwhat you(?:['\u2019]ll| will) bring\b", flags=re.IGNORECASE),
+    re.compile(r"\bwhat we(?:['\u2019]re| are) looking for\b", flags=re.IGNORECASE),
+]
+MIN_ROLE_SECTION_LENGTH = 200
+MIN_COMPANY_PREFIX_LENGTH = 250
 
 
 def get_visible_text(html):
@@ -63,9 +101,35 @@ def strip_matching_boilerplate(text):
     return normalized_text[:cutoff].strip()
 
 
+def focus_role_matching_text(text):
+    normalized_text = normalize_text_whitespace(text)
+    if not normalized_text:
+        return ""
+
+    role_start = None
+    for pattern in ROLE_SECTION_START_PATTERNS:
+        match = pattern.search(normalized_text)
+        if not match:
+            continue
+        if match.start() < MIN_COMPANY_PREFIX_LENGTH:
+            continue
+        if len(normalized_text) - match.start() < MIN_ROLE_SECTION_LENGTH:
+            continue
+        role_start = (
+            match.start()
+            if role_start is None
+            else min(role_start, match.start())
+        )
+
+    if role_start is None:
+        return strip_matching_boilerplate(normalized_text)
+
+    return strip_matching_boilerplate(normalized_text[role_start:])
+
+
 def build_matching_text(title, description):
     normalized_title = normalize_text_whitespace(title)
-    cleaned_description = strip_matching_boilerplate(description)
+    cleaned_description = focus_role_matching_text(description)
     parts = []
 
     if normalized_title:

@@ -652,8 +652,11 @@ function renderAuditRows(rows) {
 
 function scoreLine(row) {
   const parts = [];
+  if (row.raw_embedding_score !== null && row.raw_embedding_score !== undefined) {
+    parts.push(`raw ${Number(row.raw_embedding_score).toFixed(3)}`);
+  }
   if (row.semantic_score !== null && row.semantic_score !== undefined) {
-    parts.push(`semantic ${Number(row.semantic_score).toFixed(3)}`);
+    parts.push(`final ${Number(row.semantic_score).toFixed(3)}`);
   }
   if (row.semantic_threshold !== null && row.semantic_threshold !== undefined) {
     parts.push(`threshold ${Number(row.semantic_threshold).toFixed(3)}`);
@@ -677,12 +680,6 @@ function semanticLine(row) {
   }
   if (row.semantic_second_profile) {
     lines.push(`second ${row.semantic_second_profile}`);
-  }
-  if (row.title_boost_multiplier && Number(row.title_boost_multiplier) !== 1) {
-    lines.push(`title boost x${Number(row.title_boost_multiplier).toFixed(2)}`);
-  }
-  if (row.salary_penalty_applied) {
-    lines.push(`salary penalty ${Number(row.salary_penalty_applied).toFixed(3)}`);
   }
 
   const fitSummary = row.semantic_fit_summary

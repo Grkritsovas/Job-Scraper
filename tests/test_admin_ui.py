@@ -100,6 +100,7 @@ class AdminUiTests(unittest.TestCase):
                     "review_family": "semantic",
                     "classification": "semantic_above_threshold",
                     "stage": "semantic_ranking",
+                    "raw_embedding_score": 0.51,
                     "semantic_score": 0.56,
                     "semantic_threshold": 0.42,
                     "semantic_top_profile": "SWE",
@@ -129,6 +130,7 @@ class AdminUiTests(unittest.TestCase):
 
         self.assertEqual(1, payload["summary"]["row_count"])
         self.assertEqual("semantic_above_threshold", payload["rows"][0]["classification"])
+        self.assertEqual(0.51, payload["rows"][0]["raw_embedding_score"])
         self.assertEqual("SWE", payload["rows"][0]["semantic_top_profile"])
         self.assertEqual({"semantic_above_threshold": 1}, payload["summary"]["classifications"])
 

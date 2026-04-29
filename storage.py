@@ -41,6 +41,7 @@ REVIEW_AUDIT_SCHEMA_STATEMENTS = [
         sent INTEGER NOT NULL DEFAULT 0,
         hard_filter_reason TEXT,
         semantic_rank INTEGER,
+        raw_embedding_score REAL,
         semantic_score REAL,
         semantic_threshold REAL,
         semantic_top_profile TEXT,
@@ -94,6 +95,7 @@ POSTGRES_REVIEW_AUDIT_SCHEMA_STATEMENTS = [
         sent BOOLEAN NOT NULL DEFAULT FALSE,
         hard_filter_reason TEXT,
         semantic_rank INTEGER,
+        raw_embedding_score DOUBLE PRECISION,
         semantic_score DOUBLE PRECISION,
         semantic_threshold DOUBLE PRECISION,
         semantic_top_profile TEXT,
@@ -489,6 +491,7 @@ class Storage:
             "sent",
             "hard_filter_reason",
             "semantic_rank",
+            "raw_embedding_score",
             "semantic_score",
             "semantic_threshold",
             "semantic_top_profile",
@@ -530,6 +533,17 @@ class Storage:
         connection = self._connect_postgres()
         try:
             with connection.cursor() as cursor:
+                value_placeholders = [
+                    "%s::jsonb"
+                    if column
+                    in {
+                        "supporting_evidence_json",
+                        "mismatch_evidence_json",
+                        "metadata_json",
+                    }
+                    else "%s"
+                    for column in columns
+                ]
                 for row in rows:
                     cursor.execute(
                         f"""
@@ -537,10 +551,7 @@ class Storage:
                             {", ".join(columns)}
                         )
                         VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s::jsonb
+                            {", ".join(value_placeholders)}
                         )
                         """,
                         tuple(row[column] for column in columns),
@@ -688,6 +699,11 @@ class Storage:
                 connection.execute(statement)
             for statement in REVIEW_AUDIT_SCHEMA_STATEMENTS:
                 connection.execute(statement)
+            self._ensure_sqlite_columns(
+                connection,
+                "recipient_review_audit",
+                {"raw_embedding_score": "REAL"},
+            )
             for statement in SQLITE_RECIPIENT_PROFILE_SCHEMA_STATEMENTS:
                 connection.execute(statement)
             connection.commit()
@@ -702,6 +718,12 @@ class Storage:
                     cursor.execute(statement)
                 for statement in POSTGRES_REVIEW_AUDIT_SCHEMA_STATEMENTS:
                     cursor.execute(statement)
+                cursor.execute(
+                    """
+                    ALTER TABLE recipient_review_audit
+                    ADD COLUMN IF NOT EXISTS raw_embedding_score DOUBLE PRECISION
+                    """
+                )
                 for statement in POSTGRES_RECIPIENT_PROFILE_SCHEMA_STATEMENTS:
                     cursor.execute(statement)
             connection.commit()
@@ -711,6 +733,18 @@ class Storage:
     def _connect_sqlite(self):
         connection = sqlite3.connect(self.sqlite_path)
         return connection
+
+    @staticmethod
+    def _ensure_sqlite_columns(connection, table_name, columns):
+        existing_columns = {
+            row[1]
+            for row in connection.execute(f"PRAGMA table_info({table_name})")
+        }
+        for column_name, column_type in columns.items():
+            if column_name not in existing_columns:
+                connection.execute(
+                    f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+                )
 
     def _connect_postgres(self):
         try:
@@ -770,6 +804,14 @@ class Storage:
     @staticmethod
     def _review_audit_order_clause(sort, latest_first=False):
         orderings = {
+            "raw_embedding_score_desc": (
+                "raw_embedding_score IS NULL ASC, raw_embedding_score DESC, "
+                "semantic_rank IS NULL ASC, semantic_rank ASC, audit_id ASC"
+            ),
+            "raw_embedding_score_asc": (
+                "raw_embedding_score IS NULL ASC, raw_embedding_score ASC, "
+                "semantic_rank IS NULL ASC, semantic_rank DESC, audit_id ASC"
+            ),
             "semantic_score_desc": (
                 "semantic_score IS NULL ASC, semantic_score DESC, "
                 "semantic_rank IS NULL ASC, semantic_rank ASC, audit_id ASC"
@@ -831,6 +873,7 @@ class Storage:
             "sent": bool(row.get("sent", False)),
             "hard_filter_reason": row.get("hard_filter_reason"),
             "semantic_rank": row.get("semantic_rank"),
+            "raw_embedding_score": row.get("raw_embedding_score"),
             "semantic_score": row.get("semantic_score"),
             "semantic_threshold": row.get("semantic_threshold"),
             "semantic_top_profile": row.get("semantic_top_profile"),

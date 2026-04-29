@@ -321,6 +321,7 @@ def _semantic_audit_row(
             "semantic_ranking",
         ),
         "semantic_rank": semantic_rank,
+        "raw_embedding_score": job.get("raw_embedding_score"),
         "semantic_score": job.get("ranking_score"),
         "semantic_threshold": min_top_score,
         "semantic_top_profile": job.get("top_profile"),
@@ -388,6 +389,7 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
             match_text,
             profile_specs,
         )
+        raw_embedding_score = score_data["top_score"]
         score_data = apply_title_boost(score_data, job, recipient_profile)
         ranking_score = score_data["top_score"]
 
@@ -403,11 +405,12 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
                     {
                         **job,
                         **score_data,
-                "ranking_score": ranking_score,
-                "semantic_threshold": min_top_score,
-                "salary_upper_bound_gbp": salary_upper_bound,
-                "salary_penalty_applied": salary_penalty_applied,
-            },
+                        "raw_embedding_score": raw_embedding_score,
+                        "ranking_score": ranking_score,
+                        "semantic_threshold": min_top_score,
+                        "salary_upper_bound_gbp": salary_upper_bound,
+                        "salary_penalty_applied": salary_penalty_applied,
+                    },
                     "semantic_below_threshold",
                     min_top_score,
                 )
@@ -418,7 +421,9 @@ def rank_jobs(jobs, recipient_profile, matcher=None, return_stats=False):
             {
                 **job,
                 **score_data,
+                "raw_embedding_score": raw_embedding_score,
                 "ranking_score": ranking_score,
+                "semantic_threshold": min_top_score,
                 "salary_upper_bound_gbp": salary_upper_bound,
                 "salary_penalty_applied": salary_penalty_applied,
             }
