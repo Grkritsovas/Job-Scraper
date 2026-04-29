@@ -10,9 +10,11 @@ from run_all import (
     build_run_summary,
     build_run_snapshot,
     collect_all_jobs,
+    merge_seen_jobs,
     process_recipient,
     recipient_worker_count,
     select_jobs_for_recipient,
+    semantic_below_threshold_seen_jobs,
     write_run_snapshot,
 )
 
@@ -220,6 +222,7 @@ class RunAllTests(unittest.TestCase):
         self.assertEqual(1, summary["seen_skipped_jobs"])
         self.assertEqual(2, summary["ranked_jobs_passed_to_review"])
         self.assertEqual(0, summary["ranked_jobs_not_passed_to_review"])
+        self.assertEqual(1, summary["seen_recorded_jobs"])
         self.assertEqual(1, summary["recipient_seen_urls"])
 
     def test_select_jobs_for_recipient_caps_review_input_with_llm_top_n(self):
@@ -271,7 +274,120 @@ class RunAllTests(unittest.TestCase):
         self.assertEqual(3, summary["ranked_jobs"])
         self.assertEqual(1, summary["ranked_jobs_passed_to_review"])
         self.assertEqual(2, summary["ranked_jobs_not_passed_to_review"])
+        self.assertEqual(1, summary["seen_recorded_jobs"])
         self.assertEqual(0, summary["recipient_seen_urls"])
+
+    def test_select_jobs_for_recipient_marks_semantic_below_threshold_seen(self):
+        candidates = [make_job(1), make_job(2), make_job(3)]
+        recipient_profile = {"id": "george"}
+        storage = FakeStorage(set())
+        diagnostics = FakeDiagnostics()
+        below_threshold_audit_row = {
+            "job_url": "https://example.com/job-2",
+            "source_type": "example",
+            "target_value": "example",
+            "company_name": "Example",
+            "title": "Software Engineer 2",
+            "location": "London",
+            "review_family": "semantic",
+            "classification": "semantic_below_threshold",
+            "stage": "semantic_ranking",
+        }
+        hard_filter_audit_row = {
+            "job_url": "https://example.com/job-3",
+            "source_type": "example",
+            "target_value": "example",
+            "company_name": "Example",
+            "title": "Senior Engineer",
+            "location": "London",
+            "review_family": "hard_filter",
+            "classification": "hard_filtered",
+            "stage": "hard_filter",
+        }
+        ranking_stats = {
+            "input_jobs": 3,
+            "hard_filtered_jobs": 1,
+            "below_threshold_jobs": 1,
+            "ranked_jobs": 1,
+            "hard_filter_reasons": {"title_seniority": 1},
+            "audit_rows": [below_threshold_audit_row, hard_filter_audit_row],
+        }
+        review_result = {
+            "jobs_to_send": [make_job(1)],
+            "reviewed_jobs": [make_job(1)],
+            "review_mode": "gemini",
+            "llm_shortlisted_jobs": 1,
+            "gemini_reviewed_jobs": 1,
+            "review_error": None,
+            "audit_rows": [],
+        }
+
+        with (
+            patch("run_all.rank_jobs", return_value=([make_job(1)], ranking_stats)),
+            patch("run_all.rerank_jobs_with_gemini", return_value=review_result),
+        ):
+            result = select_jobs_for_recipient(
+                candidates,
+                recipient_profile,
+                storage,
+                diagnostics,
+            )
+
+        self.assertEqual(
+            ["https://example.com/job-1", "https://example.com/job-2"],
+            [job["url"] for job in result["seen_jobs"]],
+        )
+        audit_by_url = {row["job_url"]: row for row in result["audit_rows"]}
+        self.assertTrue(audit_by_url["https://example.com/job-2"]["seen_recorded"])
+        self.assertFalse(audit_by_url["https://example.com/job-3"].get("seen_recorded", False))
+
+    def test_semantic_below_threshold_seen_jobs_maps_audit_rows(self):
+        rows = [
+            {
+                "job_url": "https://example.com/below",
+                "source_type": "ashby",
+                "target_value": "example",
+                "company_name": "Example",
+                "title": "Data Analyst",
+                "location": "London",
+                "classification": "semantic_below_threshold",
+            },
+            {
+                "job_url": "https://example.com/hard",
+                "classification": "hard_filtered",
+            },
+        ]
+
+        seen_jobs = semantic_below_threshold_seen_jobs(rows)
+
+        self.assertEqual(
+            [
+                {
+                    "url": "https://example.com/below",
+                    "source": "ashby",
+                    "target_value": "example",
+                    "company": "Example",
+                    "title": "Data Analyst",
+                    "location": "London",
+                }
+            ],
+            seen_jobs,
+        )
+
+    def test_merge_seen_jobs_dedupes_urls(self):
+        merged = merge_seen_jobs(
+            [make_job(1), make_job(2)],
+            [make_job(2), make_job(3)],
+        )
+
+        self.assertEqual(
+            [
+                "https://example.com/job-1",
+                "https://example.com/job-2",
+                "https://example.com/job-3",
+            ],
+            [job["url"] for job in merged],
+        )
 
     def test_process_recipient_sends_digest_and_stores_reviewed_jobs(self):
         recipient_profile = {"id": "george", "email": "george@example.com"}

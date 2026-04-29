@@ -45,6 +45,7 @@ class ScrapeDiagnosticsTests(unittest.TestCase):
                     "ranked_jobs_not_passed_to_review": 2,
                     "review_mode": "gemini_failed",
                     "reviewed_jobs": 0,
+                    "seen_recorded_jobs": 2,
                     "llm_shortlisted_jobs": 0,
                     "gemini_reviewed_jobs": 0,
                     "review_error_stage": "batch_screening",
@@ -58,6 +59,7 @@ class ScrapeDiagnosticsTests(unittest.TestCase):
         self.assertIn("review_mode=gemini_failed", line)
         self.assertIn("ranked_jobs_passed_to_review=5", line)
         self.assertIn("ranked_not_reviewed=2", line)
+        self.assertIn("seen_new=2", line)
         self.assertIn("review_error_stage=batch_screening", line)
         self.assertIn('review_error="503 UNAVAILABLE temporary outage', line)
         self.assertLess(len(line), 500)

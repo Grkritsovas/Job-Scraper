@@ -136,6 +136,13 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
     ranked_jobs_for_review = ranked_jobs[: get_llm_top_n(len(ranked_jobs))]
     ranking_audit_rows = ranking_stats.pop("audit_rows", [])
     review_result = rerank_jobs_with_gemini(ranked_jobs_for_review, recipient_profile)
+    semantic_rejected_seen_jobs = semantic_below_threshold_seen_jobs(
+        ranking_audit_rows
+    )
+    review_result["seen_jobs"] = merge_seen_jobs(
+        review_result["reviewed_jobs"],
+        semantic_rejected_seen_jobs,
+    )
     review_result["audit_rows"] = build_review_audit_rows(
         ranking_audit_rows,
         review_result,
@@ -152,6 +159,7 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
             ),
             "review_mode": review_result["review_mode"],
             "reviewed_jobs": len(review_result["reviewed_jobs"]),
+            "seen_recorded_jobs": len(review_result["seen_jobs"]),
             "llm_shortlisted_jobs": review_result.get("llm_shortlisted_jobs"),
             "gemini_reviewed_jobs": review_result.get("gemini_reviewed_jobs"),
             "review_error": review_result.get("review_error"),
@@ -160,6 +168,35 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
         },
     )
     return review_result
+
+
+def semantic_below_threshold_seen_jobs(ranking_audit_rows):
+    return [
+        {
+            "url": row.get("job_url", ""),
+            "source": row.get("source_type", ""),
+            "target_value": row.get("target_value", ""),
+            "company": row.get("company_name", ""),
+            "title": row.get("title", ""),
+            "location": row.get("location", ""),
+        }
+        for row in ranking_audit_rows
+        if row.get("classification") == "semantic_below_threshold"
+        and row.get("job_url")
+    ]
+
+
+def merge_seen_jobs(*job_groups):
+    merged_jobs = []
+    seen_urls = set()
+    for jobs in job_groups:
+        for job in jobs or []:
+            job_url = job.get("url")
+            if not job_url or job_url in seen_urls:
+                continue
+            seen_urls.add(job_url)
+            merged_jobs.append(job)
+    return merged_jobs
 
 
 def build_review_audit_rows(ranking_audit_rows, review_result):
@@ -200,6 +237,8 @@ def build_review_audit_rows(ranking_audit_rows, review_result):
             elif review_mode in {"gemini", "gemini_failed"}:
                 metadata["selected_for_gemini"] = False
                 row = {**row, "metadata": metadata}
+        elif classification == "semantic_below_threshold":
+            row = {**row, "seen_recorded": True}
 
         merged_rows.append(row)
 
@@ -250,10 +289,11 @@ def process_recipient(recipient_profile, candidates, storage, diagnostics, run_i
     )
     jobs_to_send = review_result["jobs_to_send"]
     reviewed_jobs = review_result["reviewed_jobs"]
+    seen_jobs = review_result.get("seen_jobs", reviewed_jobs)
     if jobs_to_send:
         send_digest(recipient_profile, jobs_to_send)
-    if reviewed_jobs:
-        storage.store_seen_jobs(recipient_profile["id"], reviewed_jobs)
+    if seen_jobs:
+        storage.store_seen_jobs(recipient_profile["id"], seen_jobs)
     if review_result.get("audit_rows") and hasattr(storage, "store_review_audit_rows"):
         storage.store_review_audit_rows(
             recipient_profile["id"],

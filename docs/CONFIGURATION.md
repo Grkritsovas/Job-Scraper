@@ -53,6 +53,8 @@ Ignored files such as `recipient_profiles.local.json` may still exist as old scr
 
 Semantic matches above the threshold but outside this top-N cap are not marked seen. They can be picked up in a later run after higher-ranked reviewed jobs have been stored as seen.
 
+Semantic matches below the threshold are marked seen after ranking so the same weak matches are not repeatedly embedded on later runs. Hard-filtered jobs are not marked seen; those checks are deterministic and cheap to repeat.
+
 ## Local Admin UI
 
 Run the local admin UI with:

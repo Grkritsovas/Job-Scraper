@@ -95,6 +95,12 @@ class ScrapeDiagnostics:
             if gemini_reviewed_jobs is not None
             else ""
         )
+        seen_recorded_jobs = payload.get("seen_recorded_jobs")
+        seen_recorded_suffix = (
+            f" seen_new={seen_recorded_jobs}"
+            if seen_recorded_jobs is not None
+            else ""
+        )
         review_error = payload.get("review_error")
         review_error_suffix = (
             f' review_error="{_format_log_value(review_error)}"'
@@ -126,6 +132,7 @@ class ScrapeDiagnostics:
                 f"{not_passed_suffix}"
                 f"review_mode={review_mode}"
                 f"{reviewed_suffix}"
+                f"{seen_recorded_suffix}"
                 f"{llm_suffix}"
                 f"{gemini_reviewed_suffix}"
                 f"{review_error_stage_suffix}"
