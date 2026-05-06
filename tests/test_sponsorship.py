@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from sponsorship import (
     classify_sponsorship_status,
@@ -62,6 +63,17 @@ class SponsorshipTests(unittest.TestCase):
             "Marshmallow Ltd",
             enriched_jobs[0]["sponsor_company_metadata"]["company_name"],
         )
+
+    def test_load_lookup_ignores_raw_csv_text_environment_override(self):
+        missing_csv = self.test_dir / "missing.csv"
+
+        with patch.dict(
+            "os.environ",
+            {"SPONSOR_COMPANIES_CSV_TEXT": "company_name\nRaw Env Ltd\n"},
+        ):
+            lookup = load_sponsor_company_lookup(missing_csv)
+
+        self.assertEqual({}, lookup)
 
     def test_classify_sponsorship_statuses(self):
         self.assertEqual(

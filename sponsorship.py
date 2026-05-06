@@ -1,5 +1,4 @@
 import csv
-import io
 import os
 import re
 from pathlib import Path
@@ -118,11 +117,6 @@ def _extract_company_name(row):
 
 
 def _read_csv_rows(csv_path=None):
-    csv_text = os.getenv("SPONSOR_COMPANIES_CSV_TEXT", "").strip()
-    if csv_text:
-        reader = csv.DictReader(io.StringIO(csv_text))
-        return [{_normalize_header(key): value for key, value in row.items()} for row in reader]
-
     path = _resolve_csv_path(csv_path)
     if not path.exists():
         return []
