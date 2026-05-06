@@ -74,12 +74,23 @@ Run the local admin UI with:
 python admin_ui.py
 ```
 
-By default it opens on `http://127.0.0.1:8765` and uses the same storage selection as the scraper. Set `DATABASE_URL` or pass `--database-url` to point it at a specific SQLite or Postgres database.
+The admin UI requires an explicit database target. For normal use, set `DATABASE_URL` to the Supabase/Postgres database before launching it:
 
-If `DATABASE_URL` is set, `python admin_ui.py` tries that database first. If the connection fails, the UI falls back to local SQLite so the page can still run. You can also pass a database URL directly:
+```powershell
+$env:DATABASE_URL = "postgresql://user:password@host:5432/database"
+python admin_ui.py
+```
+
+You can also pass a database URL directly:
 
 ```powershell
 python admin_ui.py "postgresql://user:password@host:5432/database"
+```
+
+SQLite is only used when you explicitly request it, for example:
+
+```powershell
+python admin_ui.py --database-url "sqlite:///job_scraper.db"
 ```
 
 The UI can edit database-backed recipient profiles through locked schema fields, preview the generated JSON, validate/normalize it through the runtime profile loader, compare/restore saved profile versions, and browse recent `app_config.recipient_review_audit` rows. It does not edit GitHub secrets, local recipient JSON files, or job state records.

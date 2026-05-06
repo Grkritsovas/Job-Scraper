@@ -1070,10 +1070,7 @@ class Storage:
     def _ensure_sqlite_schema(self):
         connection = self._connect_sqlite()
         try:
-            for statement in SQLITE_SEEN_JOBS_SCHEMA_STATEMENTS:
-                connection.execute(statement)
-            for statement in SQLITE_DIGEST_QUEUE_SCHEMA_STATEMENTS:
-                connection.execute(statement)
+            connection.execute(SQLITE_SEEN_JOBS_SCHEMA_STATEMENTS[0])
             self._ensure_sqlite_columns(
                 connection,
                 "recipient_seen_jobs",
@@ -1090,9 +1087,20 @@ class Storage:
                     "semantic_threshold": "REAL",
                     "sent": "INTEGER NOT NULL DEFAULT 0",
                     "review_error_stage": "TEXT",
-                    "updated_at": "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP",
+                    "updated_at": "TEXT",
                 },
             )
+            connection.execute(
+                """
+                UPDATE recipient_seen_jobs
+                SET updated_at = COALESCE(updated_at, first_seen_at, CURRENT_TIMESTAMP)
+                WHERE updated_at IS NULL
+                """
+            )
+            for statement in SQLITE_SEEN_JOBS_SCHEMA_STATEMENTS[1:]:
+                connection.execute(statement)
+            for statement in SQLITE_DIGEST_QUEUE_SCHEMA_STATEMENTS:
+                connection.execute(statement)
             for statement in SQLITE_REVIEW_AUDIT_SCHEMA_STATEMENTS:
                 connection.execute(statement)
             self._ensure_sqlite_columns(

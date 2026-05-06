@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from admin_ui import AdminController, AdminApiError, create_admin_storage, database_label
 from storage import create_storage
@@ -138,17 +139,22 @@ class AdminUiTests(unittest.TestCase):
         self.assertIn("demo-recipient", options["recipient_ids"])
         self.assertIn("semantic_above_threshold", options["classifications"])
 
-    def test_admin_storage_falls_back_to_sqlite_when_primary_url_fails(self):
-        fallback_path = (self.test_dir / "fallback.db").resolve()
+    def test_admin_storage_requires_database_url(self):
+        with patch.dict("os.environ", {}, clear=True):
+            with self.assertRaises(RuntimeError) as raised:
+                create_admin_storage()
 
-        storage, info = create_admin_storage(
-            "unsupported://example",
-            fallback_url=f"sqlite:///{fallback_path}",
-        )
+        self.assertIn("Set DATABASE_URL", str(raised.exception))
+
+    def test_admin_storage_can_use_explicit_sqlite_url(self):
+        explicit_path = (self.test_dir / "explicit.db").resolve()
+
+        storage, info = create_admin_storage(f"sqlite:///{explicit_path}")
 
         self.assertEqual("sqlite", storage.backend)
-        self.assertTrue(info["using_fallback"])
-        self.assertEqual("fallback_sqlite", info["database_source"])
+        self.assertFalse(info["using_fallback"])
+        self.assertEqual("argument", info["database_source"])
+        self.assertEqual(f"sqlite:///{explicit_path}", info["database_label"])
 
     def test_database_label_hides_credentials(self):
         label = database_label(

@@ -16,6 +16,10 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_SQLITE_URL = "sqlite:///job_scraper.db"
 MAX_AUDIT_LIMIT = 500
+ADMIN_DATABASE_REQUIRED_MESSAGE = (
+    "Set DATABASE_URL to edit Supabase profiles, or pass --database-url "
+    f"{DEFAULT_SQLITE_URL} for explicit local SQLite."
+)
 
 
 class AdminApiError(Exception):
@@ -238,31 +242,25 @@ def build_parser():
     return parser
 
 
-def create_admin_storage(database_url=None, fallback_url=DEFAULT_SQLITE_URL):
+def create_admin_storage(database_url=None):
     primary_url = (database_url or os.getenv("DATABASE_URL", "")).strip()
-    if primary_url:
-        primary_label = database_label(primary_url)
-        try:
-            storage = create_storage(primary_url)
-            storage.ensure_schema()
-            return storage, {
-                "database_source": "argument" if database_url else "environment",
-                "database_label": primary_label,
-                "using_fallback": False,
-            }
-        except Exception as exc:
-            print(
-                "[admin_ui] Warning: primary database connection failed; "
-                f"falling back to local SQLite. {exc}"
-            )
+    if not primary_url:
+        raise RuntimeError(ADMIN_DATABASE_REQUIRED_MESSAGE)
 
-    storage = create_storage(fallback_url)
-    storage.ensure_schema()
+    primary_label = database_label(primary_url)
+    try:
+        storage = create_storage(primary_url)
+        storage.ensure_schema()
+    except Exception as exc:
+        raise RuntimeError(
+            f"Unable to connect to admin database {primary_label}. "
+            f"{ADMIN_DATABASE_REQUIRED_MESSAGE} Original error: {exc}"
+        ) from exc
+
     return storage, {
-        "database_source": "fallback_sqlite" if primary_url else "default_sqlite",
-        "database_label": database_label(fallback_url),
-        "attempted_database_label": database_label(primary_url) if primary_url else "",
-        "using_fallback": bool(primary_url),
+        "database_source": "argument" if database_url else "environment",
+        "database_label": primary_label,
+        "using_fallback": False,
     }
 
 
@@ -414,11 +412,16 @@ def _single_value_params(query):
 def main(argv=None):
     args = build_parser().parse_args(argv)
     requested_database_url = args.database_url or args.database_url_arg
-    storage, storage_info = create_admin_storage(requested_database_url)
+    try:
+        storage, storage_info = create_admin_storage(requested_database_url)
+    except RuntimeError as exc:
+        raise SystemExit(f"[admin_ui] {exc}") from exc
     controller = AdminController(storage, storage_info=storage_info)
     server = ThreadingHTTPServer((args.host, args.port), make_handler(controller))
-    fallback_suffix = " (SQLite fallback)" if storage_info.get("using_fallback") else ""
-    print(f"[admin_ui] http://{args.host}:{args.port}{fallback_suffix}")
+    print(
+        f"[admin_ui] http://{args.host}:{args.port} "
+        f"({storage_info.get('database_label', storage.backend)})"
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:

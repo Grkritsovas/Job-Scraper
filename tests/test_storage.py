@@ -1,3 +1,4 @@
+import sqlite3
 import unittest
 from pathlib import Path
 
@@ -38,6 +39,69 @@ class StorageTests(unittest.TestCase):
             storage.load_seen_urls("george"),
         )
         self.assertEqual(set(), storage.load_seen_urls("elisabeth"))
+
+    def test_sqlite_seen_jobs_schema_upgrades_legacy_table_before_index(self):
+        db_path = (self.test_dir / "legacy_seen_jobs.db").resolve()
+        connection = sqlite3.connect(db_path)
+        try:
+            connection.execute(
+                """
+                CREATE TABLE recipient_seen_jobs (
+                    recipient_id TEXT NOT NULL,
+                    job_url TEXT NOT NULL,
+                    source_type TEXT NOT NULL DEFAULT '',
+                    target_value TEXT,
+                    company_name TEXT,
+                    title TEXT,
+                    location TEXT,
+                    first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (recipient_id, job_url)
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO recipient_seen_jobs (
+                    recipient_id,
+                    job_url,
+                    source_type,
+                    company_name,
+                    title,
+                    location
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "demo-recipient",
+                    "https://example.com/legacy-job",
+                    "ashby",
+                    "Example",
+                    "Software Engineer",
+                    "London",
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        storage = create_storage(f"sqlite:///{db_path}")
+        storage.ensure_schema()
+
+        connection = sqlite3.connect(db_path)
+        try:
+            columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(recipient_seen_jobs)")
+            }
+        finally:
+            connection.close()
+
+        self.assertIn("is_seen", columns)
+        self.assertIn("classification", columns)
+        self.assertEqual(
+            {"https://example.com/legacy-job"},
+            storage.load_seen_urls("demo-recipient"),
+        )
 
     def test_recipient_profile_configs_round_trip(self):
         db_path = (self.test_dir / "profiles.db").resolve()

@@ -101,7 +101,8 @@ Temporary Gemini failures are stored as pending/backlog instead.
 ## Admin UI
 
 `python admin_ui.py` starts a local admin UI for database-backed recipient
-profiles and review audit browsing.
+profiles and review audit browsing after `DATABASE_URL` is set. SQLite is only
+used when a SQLite URL is explicitly passed to the command.
 
 The profile editor is schema-shaped rather than free-form JSON. Keys are locked
 into the canonical structure, values are editable, and the generated JSON preview
