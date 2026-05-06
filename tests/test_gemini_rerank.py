@@ -126,6 +126,7 @@ class GeminiRerankTests(unittest.TestCase):
             "cv_summary": "Strong Python, ML, and data project experience.",
             "education_status": "Graduated Oct 2025; not a current student.",
             "work_authorization_summary": "Graduate visa valid until Feb 2028.",
+            "max_years_experience": 1,
             "preferred_salary_max_gbp": 85000.0,
             "salary_hard_cap_gbp": 95000.0,
             "extra_screening_guidance": [
@@ -231,6 +232,14 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertIn("Do not reject an internship merely", first_prompt)
         self.assertIn('"infrastructure_scope_rule"', first_prompt)
         self.assertIn("24x7 on-call", first_prompt)
+        self.assertIn('"fit_dimension_rule"', first_prompt)
+        self.assertIn("strong thematic relevance", first_prompt)
+        self.assertIn('"hard_requirement_rule"', first_prompt)
+        self.assertIn("Penalize hard requirements", first_prompt)
+        self.assertIn('"junior_claim_rule"', first_prompt)
+        self.assertIn("Do not describe a role as junior", first_prompt)
+        self.assertIn('"junior_targeting_rule"', first_prompt)
+        self.assertIn("accepts academic/project experience", first_prompt)
         self.assertIn('"matched_profile": "Data Science"', second_prompt)
         self.assertIn("Graduated Oct 2025; not a current student.", second_prompt)
         self.assertIn("Graduate visa valid until Feb 2028.", second_prompt)
@@ -244,6 +253,52 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertIn('"student_programme_rule"', second_prompt)
         self.assertIn("Do not drop an internship merely", second_prompt)
         self.assertIn('"infrastructure_scope_rule"', second_prompt)
+        self.assertIn('"fit_dimension_rule"', second_prompt)
+        self.assertIn('"hard_requirement_rule"', second_prompt)
+        self.assertIn('"junior_claim_rule"', second_prompt)
+        self.assertIn('"junior_targeting_rule"', second_prompt)
+
+    def test_gemini_job_payload_uses_role_focused_default_excerpt(self):
+        description = (
+            ("Company intro and mission statement. " * 12)
+            + "About the role "
+            + ("requirements detail " * 120)
+            + "Our benefits "
+            + ("low signal benefit text " * 30)
+        )
+
+        payload = gemini_rerank_module._build_job_payload(
+            make_job(1, description=description),
+            gemini_rerank_module.DEFAULT_DESCRIPTION_CHARS,
+        )
+
+        excerpt = payload["description_excerpt"]
+        self.assertEqual(4000, gemini_rerank_module.DEFAULT_DESCRIPTION_CHARS)
+        self.assertGreater(len(excerpt), 1600)
+        self.assertTrue(excerpt.startswith("About the role"))
+        self.assertNotIn("Company intro", excerpt)
+        self.assertNotIn("Our benefits", excerpt)
+
+    def test_junior_targeting_rule_requires_low_experience_flag(self):
+        base_profile = {
+            "semantic_profiles": ["swe"],
+            "semantic_profile_texts": {},
+            "cv_summary": "",
+        }
+
+        general_prompt = gemini_rerank_module._build_pass_one_prompt(
+            base_profile,
+            [make_job(1)],
+            gemini_rerank_module.DEFAULT_DESCRIPTION_CHARS,
+        )
+        junior_prompt = gemini_rerank_module._build_pass_one_prompt(
+            {**base_profile, "max_years_experience": 2},
+            [make_job(1)],
+            gemini_rerank_module.DEFAULT_DESCRIPTION_CHARS,
+        )
+
+        self.assertNotIn('"junior_targeting_rule"', general_prompt)
+        self.assertIn('"junior_targeting_rule"', junior_prompt)
 
     def test_rerank_uses_top_n_and_splits_batches(self):
         jobs = [make_job(index) for index in range(1, 13)]

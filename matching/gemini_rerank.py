@@ -5,13 +5,13 @@ import threading
 import time
 
 from matching.profile_library import build_profile_specs
-from shared.descriptions import normalize_text_whitespace, strip_matching_boilerplate
+from shared.descriptions import focus_role_matching_text, normalize_text_whitespace
 
 
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 DEFAULT_TOP_N = 100
 DEFAULT_BATCH_SIZE = 10
-DEFAULT_DESCRIPTION_CHARS = 1600
+DEFAULT_DESCRIPTION_CHARS = 4000
 DEFAULT_EVIDENCE_ITEMS = 2
 DEFAULT_GEMINI_RETRY_ATTEMPTS = 20
 DEFAULT_GEMINI_RETRY_BASE_SECONDS = 5.0
@@ -196,7 +196,7 @@ def _chunked(values, size):
 
 
 def _trim_description(description, limit):
-    trimmed = normalize_text_whitespace(strip_matching_boilerplate(description))
+    trimmed = normalize_text_whitespace(focus_role_matching_text(description))
     if len(trimmed) <= limit:
         return trimmed
 
@@ -363,11 +363,50 @@ def _add_extra_guidance(instructions, key, guidance_items):
         instructions[key] = cleaned
 
 
+def _targets_junior_roles(recipient_profile):
+    max_years_experience = recipient_profile.get("max_years_experience")
+    if max_years_experience is None:
+        return False
+
+    try:
+        return float(max_years_experience) <= 2
+    except (TypeError, ValueError):
+        return False
+
+
+def _add_junior_targeting_rule(instructions, recipient_profile):
+    if not _targets_junior_roles(recipient_profile):
+        return
+
+    instructions["junior_targeting_rule"] = (
+        "This profile targets junior or early-career roles. Treat wording like "
+        "experienced, own end-to-end, production systems at scale, strong backend "
+        "experience, and required technologies missing from the candidate context "
+        "as significant stretch signals. Do not reject automatically: keep the role "
+        "only when the job explicitly says junior, associate, graduate, entry-level, "
+        "open to learning, or accepts academic/project experience, or when the "
+        "candidate context shows directly comparable evidence."
+    )
+
+
 def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
     instructions = {
         "primary_source_of_truth": (
             "The target profiles are the main decision rule. "
             "A job must clearly fit at least one target profile to be kept."
+        ),
+        "fit_dimension_rule": (
+            "Separate domain relevance, skill overlap, and realistic employability. "
+            "A role can have strong thematic relevance but still be a weak application "
+            "target when hireability is blocked by seniority, ownership scope, "
+            "unsupported core stack, or specialist domain/platform requirements."
+        ),
+        "hard_requirement_rule": (
+            "Penalize hard requirements more heavily than rewarding related domains. "
+            "Required production ownership, required technologies absent from the "
+            "candidate context, and specialist platform or domain experience should "
+            "usually make a role weak unless the job text explicitly accepts learning "
+            "or project/academic evidence."
         ),
         "cv_usage": (
             "The CV summary is supporting context only. "
@@ -424,6 +463,10 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "Prefer junior, graduate, grad, and entry-level roles. "
             "Be cautious with manager, lead, senior, and staff roles."
         ),
+        "junior_claim_rule": (
+            "Do not describe a role as junior, graduate, or early-career unless the "
+            "title, requirements, or job wording explicitly supports that label."
+        ),
         "student_programme_rule": (
             "Use candidate education_status when screening internships, placements, "
             "and student programmes. Reject roles only when the job text explicitly "
@@ -450,6 +493,7 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "that authorization window, but do not reject solely because sponsorship is unstated."
         )
     _add_salary_rule(instructions, recipient_profile)
+    _add_junior_targeting_rule(instructions, recipient_profile)
     _add_extra_guidance(
         instructions,
         "extra_screening_guidance",
@@ -490,6 +534,17 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "Compare these already-screened candidates globally and keep only the "
             "strongest final matches."
         ),
+        "fit_dimension_rule": (
+            "Separate domain relevance, skill overlap, and realistic employability. "
+            "Do not keep a role mainly because it matches an interesting theme if "
+            "the candidate is unlikely to be interviewed or hired now."
+        ),
+        "hard_requirement_rule": (
+            "Penalize hard requirements more heavily than rewarding related domains. "
+            "Required production ownership, required technologies absent from the "
+            "candidate context, and specialist platform or domain experience should "
+            "usually make a role weaker than a less glamorous but more hireable match."
+        ),
         "employability_rule": (
             "Focus on realistic employability today. "
             "Drop roles that only look relevant because of tool overlap."
@@ -520,6 +575,10 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "Use the candidate profiles as the main rule. "
             "Jobs with weak evidence, notable mismatches, or stretched reasoning should be dropped."
         ),
+        "junior_claim_rule": (
+            "Do not describe a role as junior, graduate, or early-career unless the "
+            "title, requirements, or job wording explicitly supports that label."
+        ),
         "student_programme_rule": (
             "Use candidate education_status when comparing internships, placements, "
             "and student programmes. Drop roles only when the job text explicitly "
@@ -546,6 +605,7 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "that authorization window, but do not reject solely because sponsorship is unstated."
         )
     _add_salary_rule(instructions, recipient_profile)
+    _add_junior_targeting_rule(instructions, recipient_profile)
     _add_extra_guidance(
         instructions,
         "extra_final_ranking_guidance",
