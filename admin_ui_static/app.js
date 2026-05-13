@@ -29,7 +29,12 @@ const els = {
 };
 
 document.querySelectorAll(".nav-tab").forEach((button) => {
-  button.addEventListener("click", () => switchView(button.dataset.view));
+  button.addEventListener("click", () => {
+    switchView(button.dataset.view);
+    if (button.dataset.view === "auditView") {
+      refreshAudit();
+    }
+  });
 });
 
 document.getElementById("newProfileButton").addEventListener("click", newProfile);
@@ -39,7 +44,7 @@ document.getElementById("normalizeProfileButton").addEventListener("click", norm
 document.getElementById("saveProfileButton").addEventListener("click", saveProfile);
 document.getElementById("loadVersionButton").addEventListener("click", compareSelectedVersion);
 document.getElementById("restoreVersionButton").addEventListener("click", restoreSelectedVersion);
-document.getElementById("reloadAuditButton").addEventListener("click", loadAudit);
+document.getElementById("reloadAuditButton").addEventListener("click", refreshAudit);
 document.getElementById("auditFilters").addEventListener("change", loadAudit);
 els.auditLimit.addEventListener("input", debounce(loadAudit, 250));
 els.profileForm.addEventListener("input", debounce(syncProfilePreview, 150));
@@ -50,9 +55,8 @@ init();
 
 async function init() {
   await loadHealth();
-  await loadProfiles();
-  await loadAuditOptions();
-  await loadAudit();
+  await loadProfiles().catch(console.error);
+  await refreshAudit();
 }
 
 function switchView(viewId) {
@@ -573,6 +577,11 @@ async function loadAuditOptions() {
   fillSelect(els.auditFamily, options.review_families || [], "All");
   fillSelect(els.auditClassification, options.classifications || [], "All");
   fillSelect(els.auditRun, options.run_ids || [], "All");
+}
+
+async function refreshAudit() {
+  await loadAuditOptions();
+  await loadAudit();
 }
 
 async function loadAudit() {
