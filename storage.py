@@ -1021,6 +1021,59 @@ class Storage:
     def count_recent_unseen_review_backlog(self, max_age_hours=None):
         return self.count_recent_pending_job_backlog(max_age_hours=max_age_hours)
 
+    def load_pending_job_backlog(self, recipient_id, limit=None):
+        placeholder = "?" if self.backend == "sqlite" else "%s"
+        classification_placeholders = ", ".join(
+            placeholder for _classification in PENDING_JOB_STATE_CLASSIFICATIONS
+        )
+        seen_false = "0" if self.backend == "sqlite" else "FALSE"
+        params = [recipient_id, *PENDING_JOB_STATE_CLASSIFICATIONS]
+        limit_clause = ""
+        if limit is not None:
+            limit_clause = f"LIMIT {placeholder}"
+            params.append(max(1, int(limit)))
+
+        return self._fetch_all(
+            f"""
+            SELECT
+                recipient_id,
+                job_url,
+                source_type,
+                target_value,
+                company_name,
+                title,
+                location,
+                is_seen,
+                processing_status,
+                review_family,
+                classification,
+                stage,
+                run_id,
+                semantic_rank,
+                raw_embedding_score,
+                semantic_score,
+                semantic_threshold,
+                semantic_fit_hint,
+                salary_upper_bound_gbp,
+                sent,
+                review_error_stage,
+                first_seen_at,
+                updated_at
+            FROM {self._seen_jobs_table_name()}
+            WHERE recipient_id = {placeholder}
+              AND is_seen = {seen_false}
+              AND classification IN ({classification_placeholders})
+            ORDER BY
+                semantic_rank IS NULL ASC,
+                semantic_rank ASC,
+                semantic_score DESC,
+                updated_at ASC,
+                job_url ASC
+            {limit_clause}
+            """,
+            tuple(params),
+        )
+
     def count_recent_pending_job_backlog(self, max_age_hours=None):
         placeholder = "?" if self.backend == "sqlite" else "%s"
         classification_placeholders = ", ".join(

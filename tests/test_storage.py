@@ -348,6 +348,157 @@ class StorageTests(unittest.TestCase):
             row,
         )
 
+    def test_load_pending_job_backlog_filters_and_orders_rows(self):
+        db_path = (self.test_dir / "pending_backlog.db").resolve()
+        storage = create_storage(f"sqlite:///{db_path}")
+        storage.ensure_schema()
+        rows = [
+            {
+                "job_url": "https://example.com/rank-2-high",
+                "source_type": "ashby",
+                "company_name": "Example",
+                "title": "Rank Two High",
+                "location": "London",
+                "review_family": "gemini",
+                "classification": "gemini_batch_failed_not_seen",
+                "stage": "gemini_pass1",
+                "is_seen": False,
+                "semantic_rank": 2,
+                "semantic_score": 0.83,
+                "semantic_fit_hint": "Software Engineer 83%",
+                "salary_upper_bound_gbp": 62000.0,
+            },
+            {
+                "job_url": "https://example.com/rank-1",
+                "source_type": "lever",
+                "company_name": "Example",
+                "title": "Rank One",
+                "location": "London",
+                "review_family": "semantic",
+                "classification": "semantic_above_threshold_not_reviewed",
+                "stage": "semantic_ranking",
+                "is_seen": False,
+                "semantic_rank": 1,
+                "semantic_score": 0.7,
+                "semantic_fit_hint": "Software Engineer 70%",
+                "salary_upper_bound_gbp": 50000.0,
+            },
+            {
+                "job_url": "https://example.com/null-rank",
+                "source_type": "greenhouse",
+                "company_name": "Example",
+                "title": "Null Rank",
+                "location": "London",
+                "review_family": "gemini",
+                "classification": "gemini_client_setup_failed_not_seen",
+                "stage": "gemini_pass1",
+                "is_seen": False,
+                "semantic_score": 0.99,
+                "semantic_fit_hint": "Software Engineer 99%",
+                "salary_upper_bound_gbp": 70000.0,
+            },
+            {
+                "job_url": "https://example.com/rank-2-low",
+                "source_type": "ashby",
+                "company_name": "Example",
+                "title": "Rank Two Low",
+                "location": "London",
+                "review_family": "semantic",
+                "classification": "semantic_above_threshold_not_reviewed",
+                "stage": "semantic_ranking",
+                "is_seen": False,
+                "semantic_rank": 2,
+                "semantic_score": 0.75,
+                "semantic_fit_hint": "Software Engineer 75%",
+                "salary_upper_bound_gbp": 54000.0,
+            },
+            {
+                "job_url": "https://example.com/seen",
+                "source_type": "ashby",
+                "company_name": "Example",
+                "title": "Seen",
+                "location": "London",
+                "review_family": "semantic",
+                "classification": "semantic_above_threshold_seen",
+                "stage": "semantic_ranking",
+                "is_seen": True,
+                "semantic_rank": 0,
+                "semantic_score": 1.0,
+            },
+            {
+                "job_url": "https://example.com/hard-filtered",
+                "source_type": "ashby",
+                "company_name": "Example",
+                "title": "Hard Filtered",
+                "location": "London",
+                "review_family": "hard_filter",
+                "classification": "hard_filtered",
+                "stage": "hard_filter",
+                "is_seen": False,
+                "semantic_rank": 0,
+                "semantic_score": 1.0,
+            },
+        ]
+        storage.store_job_state_rows("recipient-a", "run-1", rows)
+        storage.store_job_state_rows(
+            "recipient-b",
+            "run-1",
+            [
+                {
+                    "job_url": "https://example.com/other-recipient",
+                    "classification": "semantic_above_threshold_not_reviewed",
+                    "is_seen": False,
+                    "semantic_rank": 0,
+                    "semantic_score": 1.0,
+                }
+            ],
+        )
+
+        connection = storage._connect_sqlite()
+        try:
+            updates = [
+                ("2026-01-01 00:00:03", "https://example.com/rank-2-high"),
+                ("2026-01-01 00:00:02", "https://example.com/rank-1"),
+                ("2026-01-01 00:00:01", "https://example.com/null-rank"),
+                ("2026-01-01 00:00:04", "https://example.com/rank-2-low"),
+            ]
+            connection.executemany(
+                """
+                UPDATE recipient_seen_jobs
+                SET updated_at = ?
+                WHERE recipient_id = 'recipient-a'
+                  AND job_url = ?
+                """,
+                updates,
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        loaded = storage.load_pending_job_backlog("recipient-a")
+        limited = storage.load_pending_job_backlog("recipient-a", limit=2)
+
+        self.assertEqual(
+            [
+                "https://example.com/rank-1",
+                "https://example.com/rank-2-high",
+                "https://example.com/rank-2-low",
+                "https://example.com/null-rank",
+            ],
+            [row["job_url"] for row in loaded],
+        )
+        self.assertEqual(
+            [
+                "https://example.com/rank-1",
+                "https://example.com/rank-2-high",
+            ],
+            [row["job_url"] for row in limited],
+        )
+        self.assertEqual("Software Engineer 70%", loaded[0]["semantic_fit_hint"])
+        self.assertEqual(50000.0, loaded[0]["salary_upper_bound_gbp"])
+        self.assertEqual("gemini_batch_failed_not_seen", loaded[1]["classification"])
+        self.assertEqual(5, storage.count_recent_pending_job_backlog())
+
     def test_review_backlog_count_uses_recent_pending_job_state_rows(self):
         db_path = (self.test_dir / "state_backlog.db").resolve()
         storage = create_storage(f"sqlite:///{db_path}")
