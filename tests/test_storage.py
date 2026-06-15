@@ -98,6 +98,8 @@ class StorageTests(unittest.TestCase):
 
         self.assertIn("is_seen", columns)
         self.assertIn("classification", columns)
+        self.assertIn("semantic_fit_hint", columns)
+        self.assertIn("salary_upper_bound_gbp", columns)
         self.assertEqual(
             {"https://example.com/legacy-job"},
             storage.load_seen_urls("demo-recipient"),
@@ -281,6 +283,70 @@ class StorageTests(unittest.TestCase):
         )
         self.assertEqual(["recipient-a"], filter_values["recipient_ids"])
         self.assertEqual(["semantic"], filter_values["review_families"])
+
+    def test_pending_semantic_job_state_stores_prompt_metadata(self):
+        db_path = (self.test_dir / "state_prompt_metadata.db").resolve()
+        storage = create_storage(f"sqlite:///{db_path}")
+        storage.ensure_schema()
+
+        storage.store_job_state_rows(
+            "recipient-a",
+            "run-1",
+            [
+                {
+                    "job_url": "https://example.com/semantic-backlog",
+                    "source_type": "ashby",
+                    "company_name": "Example",
+                    "title": "Semantic Backlog",
+                    "location": "London",
+                    "review_family": "semantic",
+                    "classification": "semantic_above_threshold_not_reviewed",
+                    "stage": "semantic_ranking",
+                    "is_seen": False,
+                    "semantic_rank": 2,
+                    "semantic_score": 0.71,
+                    "semantic_threshold": 0.42,
+                    "semantic_fit_hint": "Software Engineer 71% | Data 64%",
+                    "salary_upper_bound_gbp": 55000.0,
+                }
+            ],
+        )
+
+        connection = storage._connect_sqlite()
+        try:
+            row = connection.execute(
+                """
+                SELECT
+                    is_seen,
+                    processing_status,
+                    classification,
+                    semantic_rank,
+                    semantic_score,
+                    semantic_threshold,
+                    semantic_fit_hint,
+                    salary_upper_bound_gbp
+                FROM recipient_seen_jobs
+                WHERE recipient_id = ?
+                  AND job_url = ?
+                """,
+                ("recipient-a", "https://example.com/semantic-backlog"),
+            ).fetchone()
+        finally:
+            connection.close()
+
+        self.assertEqual(
+            (
+                0,
+                "pending_review",
+                "semantic_above_threshold_not_reviewed",
+                2,
+                0.71,
+                0.42,
+                "Software Engineer 71% | Data 64%",
+                55000.0,
+            ),
+            row,
+        )
 
     def test_review_backlog_count_uses_recent_pending_job_state_rows(self):
         db_path = (self.test_dir / "state_backlog.db").resolve()

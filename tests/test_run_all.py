@@ -402,6 +402,10 @@ class RunAllTests(unittest.TestCase):
                 "classification": "semantic_above_threshold",
                 "stage": "semantic_ranking",
                 "seen_recorded": False,
+                "semantic_rank": 3,
+                "semantic_score": 0.76,
+                "semantic_fit_summary": "Software Engineer 76% | Data 64%",
+                "salary_upper_bound_gbp": 52000.0,
             },
             {
                 "job_url": "https://example.com/gemini-failed",
@@ -409,6 +413,8 @@ class RunAllTests(unittest.TestCase):
                 "classification": "gemini_batch_failed_not_seen",
                 "stage": "gemini_pass1",
                 "seen_recorded": False,
+                "semantic_fit_hint": "Software Engineer 74% | Data 61%",
+                "salary_upper_bound_gbp": 61000.0,
             },
             {
                 "job_url": "https://example.com/hard",
@@ -436,8 +442,24 @@ class RunAllTests(unittest.TestCase):
             state_by_url["https://example.com/backlog"]["classification"],
         )
         self.assertEqual(
+            "Software Engineer 76% | Data 64%",
+            state_by_url["https://example.com/backlog"]["semantic_fit_hint"],
+        )
+        self.assertEqual(
+            52000.0,
+            state_by_url["https://example.com/backlog"]["salary_upper_bound_gbp"],
+        )
+        self.assertEqual(
             "pending_review",
             state_by_url["https://example.com/gemini-failed"]["processing_status"],
+        )
+        self.assertEqual(
+            "Software Engineer 74% | Data 61%",
+            state_by_url["https://example.com/gemini-failed"]["semantic_fit_hint"],
+        )
+        self.assertEqual(
+            61000.0,
+            state_by_url["https://example.com/gemini-failed"]["salary_upper_bound_gbp"],
         )
 
     def test_support_run_queues_digest_jobs_without_sending(self):

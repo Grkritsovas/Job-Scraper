@@ -26,6 +26,8 @@ SQLITE_SEEN_JOBS_SCHEMA_STATEMENTS = [
         raw_embedding_score REAL,
         semantic_score REAL,
         semantic_threshold REAL,
+        semantic_fit_hint TEXT,
+        salary_upper_bound_gbp REAL,
         sent INTEGER NOT NULL DEFAULT 0,
         review_error_stage TEXT,
         first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -59,6 +61,8 @@ POSTGRES_SEEN_JOBS_SCHEMA_STATEMENTS = [
         raw_embedding_score DOUBLE PRECISION,
         semantic_score DOUBLE PRECISION,
         semantic_threshold DOUBLE PRECISION,
+        semantic_fit_hint TEXT,
+        salary_upper_bound_gbp DOUBLE PRECISION,
         sent BOOLEAN NOT NULL DEFAULT FALSE,
         review_error_stage TEXT,
         first_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -545,6 +549,8 @@ class Storage:
             "raw_embedding_score",
             "semantic_score",
             "semantic_threshold",
+            "semantic_fit_hint",
+            "salary_upper_bound_gbp",
             "sent",
             "review_error_stage",
         ]
@@ -583,6 +589,8 @@ class Storage:
                         raw_embedding_score = excluded.raw_embedding_score,
                         semantic_score = excluded.semantic_score,
                         semantic_threshold = excluded.semantic_threshold,
+                        semantic_fit_hint = excluded.semantic_fit_hint,
+                        salary_upper_bound_gbp = excluded.salary_upper_bound_gbp,
                         sent = CASE
                             WHEN recipient_seen_jobs.sent = 1
                               OR excluded.sent = 1
@@ -632,6 +640,8 @@ class Storage:
                             raw_embedding_score = EXCLUDED.raw_embedding_score,
                             semantic_score = EXCLUDED.semantic_score,
                             semantic_threshold = EXCLUDED.semantic_threshold,
+                            semantic_fit_hint = EXCLUDED.semantic_fit_hint,
+                            salary_upper_bound_gbp = EXCLUDED.salary_upper_bound_gbp,
                             sent = {target_table}.sent
                                 OR EXCLUDED.sent,
                             review_error_stage = EXCLUDED.review_error_stage,
@@ -1085,6 +1095,8 @@ class Storage:
                     "raw_embedding_score": "REAL",
                     "semantic_score": "REAL",
                     "semantic_threshold": "REAL",
+                    "semantic_fit_hint": "TEXT",
+                    "salary_upper_bound_gbp": "REAL",
                     "sent": "INTEGER NOT NULL DEFAULT 0",
                     "review_error_stage": "TEXT",
                     "updated_at": "TEXT",
@@ -1169,6 +1181,8 @@ class Storage:
             "raw_embedding_score": "DOUBLE PRECISION",
             "semantic_score": "DOUBLE PRECISION",
             "semantic_threshold": "DOUBLE PRECISION",
+            "semantic_fit_hint": "TEXT",
+            "salary_upper_bound_gbp": "DOUBLE PRECISION",
             "sent": "BOOLEAN NOT NULL DEFAULT FALSE",
             "review_error_stage": "TEXT",
             "updated_at": "TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
@@ -1478,6 +1492,10 @@ class Storage:
             "raw_embedding_score": row.get("raw_embedding_score"),
             "semantic_score": row.get("semantic_score"),
             "semantic_threshold": row.get("semantic_threshold"),
+            "semantic_fit_hint": (
+                row.get("semantic_fit_hint") or row.get("semantic_fit_summary")
+            ),
+            "salary_upper_bound_gbp": row.get("salary_upper_bound_gbp"),
             "sent": bool(row.get("sent", False)),
             "review_error_stage": row.get("review_error_stage"),
         }

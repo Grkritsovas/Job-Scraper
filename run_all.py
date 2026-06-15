@@ -356,6 +356,10 @@ def job_state_row_from_audit_row(row):
         "raw_embedding_score": row.get("raw_embedding_score"),
         "semantic_score": row.get("semantic_score"),
         "semantic_threshold": row.get("semantic_threshold"),
+        "semantic_fit_hint": (
+            row.get("semantic_fit_hint") or row.get("semantic_fit_summary")
+        ),
+        "salary_upper_bound_gbp": row.get("salary_upper_bound_gbp"),
         "sent": bool(row.get("sent", False)),
         "review_error_stage": row.get("review_error_stage"),
     }
