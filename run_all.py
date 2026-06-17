@@ -626,6 +626,11 @@ def build_run_summary(candidates, enriched_candidates, recipient_profiles, resul
         for result in results
         if result.get("review_mode") == "gemini_failed"
     )
+    support_backlog_refetch_statuses = Counter()
+    for result in results:
+        support_backlog_refetch_statuses.update(
+            result.get("backlog_refetch_statuses") or {}
+        )
 
     return {
         "candidate_jobs": len(candidates),
@@ -644,6 +649,16 @@ def build_run_summary(candidates, enriched_candidates, recipient_profiles, resul
         "queued_jobs_delivered": sum(
             len(result.get("queued_jobs_delivered") or []) for result in results
         ),
+        "support_backlog_candidates": sum(
+            result.get("backlog_rows_loaded", 0) for result in results
+        ),
+        "support_backlog_refetched": sum(
+            result.get("backlog_rows_refetched", 0) for result in results
+        ),
+        "support_backlog_expired": sum(
+            result.get("backlog_rows_expired", 0) for result in results
+        ),
+        "support_backlog_refetch_statuses": dict(support_backlog_refetch_statuses),
     }
 
 
@@ -689,21 +704,26 @@ def main(argv=None):
 
     storage = create_storage()
     initialize_storage(storage)
-    targets = load_configured_targets()
     diagnostics = ScrapeDiagnostics(
         enabled=os.getenv("JOB_SCRAPER_DIAGNOSTICS", "1") != "0"
     )
     recipient_profiles = load_recipient_profiles(storage=storage)
-    sponsor_company_lookup = load_sponsor_company_lookup()
-    diagnostics.record_sponsor_lookup_summary(len(sponsor_company_lookup))
-    if sponsor_aware_profiles(recipient_profiles) and not sponsor_company_lookup:
-        print(
-            "Warning: sponsorship-aware recipient profiles are enabled, but no sponsor "
-            "company lookup data was loaded."
-        )
 
-    candidates = collect_all_jobs(targets, diagnostics)
-    enriched_candidates = enrich_jobs(candidates, sponsor_company_lookup)
+    if args.support_run:
+        candidates = []
+        enriched_candidates = []
+    else:
+        targets = load_configured_targets()
+        sponsor_company_lookup = load_sponsor_company_lookup()
+        diagnostics.record_sponsor_lookup_summary(len(sponsor_company_lookup))
+        if sponsor_aware_profiles(recipient_profiles) and not sponsor_company_lookup:
+            print(
+                "Warning: sponsorship-aware recipient profiles are enabled, but no sponsor "
+                "company lookup data was loaded."
+            )
+
+        candidates = collect_all_jobs(targets, diagnostics)
+        enriched_candidates = enrich_jobs(candidates, sponsor_company_lookup)
 
     recipient_results = process_recipients(
         recipient_profiles,

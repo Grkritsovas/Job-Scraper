@@ -81,6 +81,13 @@ class ScrapeDiagnosticsTests(unittest.TestCase):
                     "recipient_count": 2,
                     "jobs_sent": 3,
                     "reviewed_jobs": 20,
+                    "support_backlog_candidates": 5,
+                    "support_backlog_refetched": 4,
+                    "support_backlog_expired": 1,
+                    "support_backlog_refetch_statuses": {
+                        "ok": 3,
+                        "dead": 1,
+                    },
                     "review_modes": {"gemini": 1, "gemini_failed": 1},
                     "gemini_failure_stages": {"batch_screening": 1},
                 }
@@ -90,6 +97,10 @@ class ScrapeDiagnosticsTests(unittest.TestCase):
         self.assertIn("[run_summary]", line)
         self.assertIn("candidate_jobs=40", line)
         self.assertIn("jobs_sent=3", line)
+        self.assertIn("support_backlog_candidates=5", line)
+        self.assertIn("support_backlog_refetched=4", line)
+        self.assertIn("support_backlog_expired=1", line)
+        self.assertIn("support_backlog_refetch_statuses=ok:3,dead:1", line)
         self.assertIn("source_failures=1", line)
         self.assertIn("failed_sources=greenhouse", line)
         self.assertIn("review_modes=gemini:1,gemini_failed:1", line)

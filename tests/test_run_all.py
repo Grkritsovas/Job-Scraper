@@ -13,6 +13,7 @@ from run_all import (
     build_run_summary,
     build_run_snapshot,
     collect_all_jobs,
+    main,
     merge_seen_jobs,
     process_recipient,
     recipient_worker_count,
@@ -953,6 +954,137 @@ class RunAllTests(unittest.TestCase):
             {"batch_screening": 1},
             summary["gemini_failure_stages"],
         )
+
+    def test_build_run_summary_counts_support_backlog_candidates(self):
+        summary = build_run_summary(
+            candidates=[],
+            enriched_candidates=[],
+            recipient_profiles=[{"id": "one"}, {"id": "two"}],
+            results=[
+                {
+                    "review_mode": "gemini",
+                    "reviewed_jobs": [],
+                    "backlog_rows_loaded": 3,
+                    "backlog_rows_refetched": 2,
+                    "backlog_rows_expired": 1,
+                    "backlog_refetch_statuses": {"ok": 1, "dead": 1},
+                },
+                {
+                    "review_mode": "empty",
+                    "reviewed_jobs": [],
+                    "backlog_rows_loaded": 4,
+                    "backlog_rows_refetched": 1,
+                    "backlog_rows_expired": 0,
+                    "backlog_refetch_statuses": {"temporary_failure": 1},
+                },
+            ],
+        )
+
+        self.assertEqual(0, summary["candidate_jobs"])
+        self.assertEqual(7, summary["support_backlog_candidates"])
+        self.assertEqual(3, summary["support_backlog_refetched"])
+        self.assertEqual(1, summary["support_backlog_expired"])
+        self.assertEqual(
+            {"dead": 1, "ok": 1, "temporary_failure": 1},
+            summary["support_backlog_refetch_statuses"],
+        )
+
+    def test_support_run_main_skips_full_scraping(self):
+        storage = FakeStorage(set())
+        recipient_profiles = [{"id": "george", "email": "george@example.com"}]
+        recipient_results = [
+            {
+                "review_mode": "gemini",
+                "jobs_to_send": [],
+                "reviewed_jobs": [],
+                "jobs_queued_count": 1,
+                "backlog_rows_loaded": 3,
+                "backlog_rows_refetched": 2,
+                "backlog_rows_expired": 1,
+                "backlog_refetch_statuses": {"ok": 1, "dead": 1},
+            }
+        ]
+
+        with (
+            patch("run_all.create_storage", return_value=storage),
+            patch("run_all.initialize_storage") as initialize_mock,
+            patch("run_all.load_recipient_profiles", return_value=recipient_profiles),
+            patch("run_all.load_configured_targets") as load_targets_mock,
+            patch("run_all.load_sponsor_company_lookup") as sponsor_mock,
+            patch("run_all.collect_all_jobs") as collect_mock,
+            patch("run_all.enrich_jobs") as enrich_mock,
+            patch(
+                "run_all.process_recipients",
+                return_value=recipient_results,
+            ) as process_mock,
+            patch("builtins.print") as print_mock,
+        ):
+            main(["--support-run"])
+
+        initialize_mock.assert_called_once_with(storage)
+        load_targets_mock.assert_not_called()
+        sponsor_mock.assert_not_called()
+        collect_mock.assert_not_called()
+        enrich_mock.assert_not_called()
+        process_mock.assert_called_once()
+        process_args = process_mock.call_args.args
+        process_kwargs = process_mock.call_args.kwargs
+        self.assertEqual(recipient_profiles, process_args[0])
+        self.assertEqual([], process_args[1])
+        self.assertIs(storage, process_args[2])
+        self.assertTrue(process_kwargs.get("support_run"))
+        run_summary_line = [
+            call.args[0]
+            for call in print_mock.call_args_list
+            if call.args and str(call.args[0]).startswith("[run_summary]")
+        ][0]
+        self.assertIn("support_backlog_candidates=3", run_summary_line)
+
+    def test_main_run_still_uses_full_scraping_path(self):
+        storage = FakeStorage(set())
+        recipient_profiles = [{"id": "george", "email": "george@example.com"}]
+        targets = {"ashby": ["example"], "greenhouse": [], "lever": [], "nextjs": []}
+        candidates = [make_job(1)]
+        enriched_candidates = [{**make_job(1), "is_sponsor_licensed_employer": True}]
+        recipient_results = [
+            {
+                "review_mode": "gemini",
+                "jobs_to_send": [make_job(1)],
+                "reviewed_jobs": [make_job(1)],
+            }
+        ]
+
+        with (
+            patch("run_all.create_storage", return_value=storage),
+            patch("run_all.initialize_storage"),
+            patch("run_all.load_recipient_profiles", return_value=recipient_profiles),
+            patch(
+                "run_all.load_configured_targets",
+                return_value=targets,
+            ) as load_targets_mock,
+            patch(
+                "run_all.load_sponsor_company_lookup",
+                return_value={"Example"},
+            ) as sponsor_mock,
+            patch("run_all.collect_all_jobs", return_value=candidates) as collect_mock,
+            patch("run_all.enrich_jobs", return_value=enriched_candidates) as enrich_mock,
+            patch(
+                "run_all.process_recipients",
+                return_value=recipient_results,
+            ) as process_mock,
+            patch("builtins.print"),
+        ):
+            main([])
+
+        load_targets_mock.assert_called_once_with()
+        sponsor_mock.assert_called_once_with()
+        collect_mock.assert_called_once()
+        self.assertEqual(targets, collect_mock.call_args.args[0])
+        enrich_mock.assert_called_once_with(candidates, {"Example"})
+        process_args = process_mock.call_args.args
+        process_kwargs = process_mock.call_args.kwargs
+        self.assertEqual(enriched_candidates, process_args[1])
+        self.assertFalse(process_kwargs.get("support_run"))
 
     def test_build_and_write_run_snapshot(self):
         diagnostics = FakeDiagnostics()

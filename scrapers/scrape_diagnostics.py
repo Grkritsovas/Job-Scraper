@@ -207,6 +207,9 @@ class ScrapeDiagnostics:
         gemini_failure_stages = _format_count_map(
             summary.get("gemini_failure_stages")
         )
+        support_refetch_statuses = _format_count_map(
+            summary.get("support_backlog_refetch_statuses")
+        )
         with self._lock:
             self.run_summaries.append(
                 {
@@ -223,6 +226,10 @@ class ScrapeDiagnostics:
                 f"jobs_queued={summary.get('jobs_queued', 0)} "
                 f"queued_delivered={summary.get('queued_jobs_delivered', 0)} "
                 f"reviewed_jobs={summary.get('reviewed_jobs', 0)} "
+                f"support_backlog_candidates={summary.get('support_backlog_candidates', 0)} "
+                f"support_backlog_refetched={summary.get('support_backlog_refetched', 0)} "
+                f"support_backlog_expired={summary.get('support_backlog_expired', 0)} "
+                f"support_backlog_refetch_statuses={support_refetch_statuses} "
                 f"source_failures={len(self.source_failures)} "
                 f"failed_sources={source_failure_sources} "
                 f"review_modes={review_modes} "
