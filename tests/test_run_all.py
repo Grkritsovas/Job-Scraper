@@ -38,16 +38,22 @@ class FakeStorage:
     def __init__(self, seen_urls):
         self._seen_urls = set(seen_urls)
         self.stored = []
+        self.state_rows = []
         self.audit_rows = []
         self.queued_jobs = []
         self.queue_jobs_to_load = []
         self.marked_sent = []
+        self.pending_backlog_rows = []
+        self.expired_jobs = []
 
     def load_seen_urls(self, recipient_id):
         return set(self._seen_urls)
 
     def store_seen_jobs(self, recipient_id, jobs):
         self.stored.append((recipient_id, list(jobs)))
+
+    def store_job_state_rows(self, recipient_id, run_id, rows):
+        self.state_rows.append((recipient_id, run_id, list(rows)))
 
     def store_digest_queue_jobs(self, recipient_id, run_id, jobs):
         self.queued_jobs.append((recipient_id, run_id, list(jobs)))
@@ -60,6 +66,20 @@ class FakeStorage:
 
     def store_review_audit_rows(self, recipient_id, run_id, rows):
         self.audit_rows.append((recipient_id, run_id, list(rows)))
+
+    def load_pending_job_backlog(self, recipient_id, limit=None):
+        rows = [
+            row
+            for row in self.pending_backlog_rows
+            if row.get("recipient_id", recipient_id) == recipient_id
+        ]
+        if limit is not None:
+            return rows[:limit]
+        return rows
+
+    def mark_pending_job_expired(self, recipient_id, job_url, run_id=None, reason=None):
+        self.expired_jobs.append((recipient_id, job_url, run_id, reason))
+        return 1
 
 
 class FakeDiagnostics:
@@ -520,35 +540,257 @@ class RunAllTests(unittest.TestCase):
         )
         self.assertIn('"salary_upper_bound_gbp": 58000.0', prompt)
 
-    def test_support_run_queues_digest_jobs_without_sending(self):
+    def test_support_run_reviews_only_pending_backlog_jobs(self):
         recipient_profile = {"id": "george", "email": "george@example.com"}
         storage = FakeStorage(set())
         diagnostics = FakeDiagnostics()
+        approved_url = "https://example.com/backlog-approved"
+        rejected_url = "https://example.com/backlog-rejected"
+        dead_url = "https://example.com/backlog-dead"
+        temporary_url = "https://example.com/backlog-temporary"
+        storage.pending_backlog_rows = [
+            {
+                "recipient_id": "george",
+                "job_url": approved_url,
+                "source_type": "ashby",
+                "target_value": "example",
+                "company_name": "Example",
+                "title": "Approved Backlog",
+                "location": "London",
+                "semantic_rank": 1,
+                "raw_embedding_score": 0.7,
+                "semantic_score": 0.82,
+                "semantic_threshold": 0.42,
+                "semantic_fit_hint": "SWE 82%",
+                "salary_upper_bound_gbp": 52000.0,
+            },
+            {
+                "recipient_id": "george",
+                "job_url": rejected_url,
+                "source_type": "lever",
+                "target_value": "example",
+                "company_name": "Example",
+                "title": "Rejected Backlog",
+                "location": "London",
+                "semantic_rank": 2,
+                "raw_embedding_score": 0.68,
+                "semantic_score": 0.73,
+                "semantic_threshold": 0.42,
+                "semantic_fit_hint": "SWE 73%",
+            },
+            {
+                "recipient_id": "george",
+                "job_url": dead_url,
+                "source_type": "greenhouse",
+                "target_value": "example",
+                "company_name": "Example",
+                "title": "Dead Backlog",
+                "location": "London",
+                "semantic_rank": 3,
+                "semantic_score": 0.71,
+            },
+            {
+                "recipient_id": "george",
+                "job_url": temporary_url,
+                "source_type": "ashby",
+                "target_value": "example",
+                "company_name": "Example",
+                "title": "Temporary Backlog",
+                "location": "London",
+                "semantic_rank": 4,
+                "semantic_score": 0.69,
+            },
+        ]
+        approved_job = {
+            "url": approved_url,
+            "company": "Example",
+            "title": "Approved Backlog",
+            "location": "London",
+            "source": "ashby",
+            "target_value": "example",
+            "why_apply": "Strong support evidence.",
+        }
         review_result = {
-            "jobs_to_send": [make_job(1)],
-            "reviewed_jobs": [make_job(1)],
-            "seen_jobs": [make_job(1)],
+            "jobs_to_send": [approved_job],
+            "reviewed_jobs": [approved_job],
             "review_mode": "gemini",
             "llm_shortlisted_jobs": 1,
-            "gemini_reviewed_jobs": 1,
+            "gemini_reviewed_jobs": 2,
             "audit_rows": [
                 {
-                    "job_url": "https://example.com/job-1",
-                    "source_type": "example",
+                    "job_url": approved_url,
+                    "source_type": "ashby",
+                    "target_value": "example",
                     "company_name": "Example",
-                    "title": "Software Engineer 1",
+                    "title": "Approved Backlog",
                     "location": "London",
                     "review_family": "gemini",
                     "classification": "gemini_pass2_approved_sent_seen",
                     "stage": "gemini_pass2",
                     "seen_recorded": True,
                     "sent": True,
+                    "semantic_rank": 1,
+                    "semantic_score": 0.82,
+                    "semantic_fit_hint": "SWE 82%",
+                },
+                {
+                    "job_url": rejected_url,
+                    "source_type": "lever",
+                    "target_value": "example",
+                    "company_name": "Example",
+                    "title": "Rejected Backlog",
+                    "location": "London",
+                    "review_family": "gemini",
+                    "classification": "gemini_pass1_rejected_seen",
+                    "stage": "gemini_pass1",
+                    "seen_recorded": True,
+                    "sent": False,
+                    "semantic_rank": 2,
+                    "semantic_score": 0.73,
+                    "semantic_fit_hint": "SWE 73%",
+                },
+            ],
+        }
+
+        def fake_refetch(url):
+            results = {
+                approved_url: {
+                    "status": "ok",
+                    "description": "Fresh approved backlog description.",
+                },
+                rejected_url: {
+                    "status": "ok",
+                    "description": "Fresh rejected backlog description.",
+                },
+                dead_url: {"status": "dead", "reason": "missing_page"},
+                temporary_url: {"status": "temporary_failure", "reason": "timeout"},
+            }
+            return results[url]
+
+        with (
+            patch("run_all.rank_jobs") as rank_mock,
+            patch("run_all.select_jobs_for_recipient") as select_mock,
+            patch(
+                "run_all.refetch_backlog_job_description",
+                side_effect=fake_refetch,
+            ) as refetch_mock,
+            patch(
+                "run_all.rerank_jobs_with_gemini",
+                return_value=review_result,
+            ) as rerank_mock,
+            patch("run_all.send_digest") as send_digest_mock,
+        ):
+            result = process_recipient(
+                recipient_profile,
+                [make_job(99)],
+                storage,
+                diagnostics,
+                run_id="support-run",
+                support_run=True,
+            )
+
+        rank_mock.assert_not_called()
+        select_mock.assert_not_called()
+        send_digest_mock.assert_not_called()
+        self.assertEqual(
+            [approved_url, rejected_url, dead_url, temporary_url],
+            [call.args[0] for call in refetch_mock.call_args_list],
+        )
+        rerank_input_jobs = rerank_mock.call_args.args[0]
+        self.assertEqual(
+            [approved_url, rejected_url],
+            [job["url"] for job in rerank_input_jobs],
+        )
+        self.assertEqual(
+            [
+                "Fresh approved backlog description.",
+                "Fresh rejected backlog description.",
+            ],
+            [job["description"] for job in rerank_input_jobs],
+        )
+        self.assertEqual(
+            [("george", dead_url, "support-run", "missing_page")],
+            storage.expired_jobs,
+        )
+        self.assertEqual(
+            [("george", "support-run", [approved_job])],
+            storage.queued_jobs,
+        )
+        self.assertEqual([], result["jobs_to_send"])
+        self.assertEqual([approved_job], result["queued_jobs"])
+        self.assertEqual(1, result["jobs_queued_count"])
+        stored_audit_by_url = {row["job_url"]: row for row in storage.audit_rows[0][2]}
+        self.assertEqual(
+            "gemini_pass2_approved_queued_seen",
+            stored_audit_by_url[approved_url]["classification"],
+        )
+        self.assertFalse(stored_audit_by_url[approved_url]["sent"])
+        self.assertEqual(
+            "gemini_pass1_rejected_seen",
+            stored_audit_by_url[rejected_url]["classification"],
+        )
+        stored_state_by_url = {row["job_url"]: row for row in storage.state_rows[0][2]}
+        self.assertTrue(stored_state_by_url[approved_url]["is_seen"])
+        self.assertTrue(stored_state_by_url[rejected_url]["is_seen"])
+        self.assertNotIn(temporary_url, stored_state_by_url)
+        self.assertEqual(4, diagnostics.calls[0][1]["backlog_rows_refetched"])
+        self.assertEqual(1, diagnostics.calls[0][1]["backlog_rows_expired"])
+        self.assertEqual(
+            {"ok": 2, "dead": 1, "temporary_failure": 1},
+            diagnostics.calls[0][1]["backlog_refetch_statuses"],
+        )
+
+    def test_support_run_keeps_gemini_failure_rows_pending(self):
+        recipient_profile = {"id": "george", "email": "george@example.com"}
+        storage = FakeStorage(set())
+        diagnostics = FakeDiagnostics()
+        job_url = "https://example.com/backlog-gemini-failed"
+        storage.pending_backlog_rows = [
+            {
+                "recipient_id": "george",
+                "job_url": job_url,
+                "source_type": "ashby",
+                "target_value": "example",
+                "company_name": "Example",
+                "title": "Gemini Failed Backlog",
+                "location": "London",
+                "semantic_rank": 1,
+                "semantic_score": 0.8,
+                "semantic_threshold": 0.42,
+                "semantic_fit_hint": "SWE 80%",
+            },
+        ]
+        review_result = {
+            "jobs_to_send": [],
+            "reviewed_jobs": [],
+            "review_mode": "gemini_failed",
+            "llm_shortlisted_jobs": 0,
+            "gemini_reviewed_jobs": 0,
+            "review_error": "503 UNAVAILABLE",
+            "review_error_stage": "batch_screening",
+            "audit_rows": [
+                {
+                    "job_url": job_url,
+                    "source_type": "ashby",
+                    "target_value": "example",
+                    "company_name": "Example",
+                    "title": "Gemini Failed Backlog",
+                    "location": "London",
+                    "review_family": "gemini",
+                    "classification": "gemini_batch_failed_not_seen",
+                    "stage": "gemini_pass1",
+                    "seen_recorded": False,
+                    "review_error_stage": "batch_screening",
                 }
             ],
         }
 
         with (
-            patch("run_all.select_jobs_for_recipient", return_value=review_result),
+            patch(
+                "run_all.refetch_backlog_job_description",
+                return_value={"status": "ok", "description": "Fresh description."},
+            ),
+            patch("run_all.rerank_jobs_with_gemini", return_value=review_result),
             patch("run_all.send_digest") as send_digest_mock,
         ):
             result = process_recipient(
@@ -561,19 +803,13 @@ class RunAllTests(unittest.TestCase):
             )
 
         send_digest_mock.assert_not_called()
-        self.assertEqual(
-            [("george", "support-run", [make_job(1)])],
-            storage.queued_jobs,
-        )
-        self.assertEqual([], result["jobs_to_send"])
-        self.assertEqual([make_job(1)], result["queued_jobs"])
-        self.assertEqual(1, result["jobs_queued_count"])
-        stored_audit = storage.audit_rows[0][2][0]
-        self.assertEqual(
-            "gemini_pass2_approved_queued_seen",
-            stored_audit["classification"],
-        )
-        self.assertFalse(stored_audit["sent"])
+        self.assertEqual([], storage.queued_jobs)
+        self.assertEqual([], result["queued_jobs"])
+        stored_state = storage.state_rows[0][2][0]
+        self.assertEqual(job_url, stored_state["job_url"])
+        self.assertFalse(stored_state["is_seen"])
+        self.assertEqual("pending_review", stored_state["processing_status"])
+        self.assertEqual("gemini_batch_failed_not_seen", stored_state["classification"])
 
     def test_main_run_sends_queued_jobs_with_current_digest(self):
         recipient_profile = {"id": "george", "email": "george@example.com"}

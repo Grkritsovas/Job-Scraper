@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import uuid
 
+from backlog_refetch import refetch_backlog_job_description
 from config.recipient_profiles import load_recipient_profiles
 from config.target_config import load_configured_targets
 from emailer import send_email
@@ -177,6 +178,86 @@ def select_jobs_for_recipient(candidates, recipient_profile, storage, diagnostic
             "review_error": review_result.get("review_error"),
             "review_error_stage": review_result.get("review_error_stage"),
             "recipient_seen_urls": len(seen_urls),
+        },
+    )
+    return review_result
+
+
+def select_backlog_jobs_for_support_recipient(
+    recipient_profile,
+    storage,
+    diagnostics,
+    run_id=None,
+):
+    recipient_id = recipient_profile["id"]
+    if not hasattr(storage, "load_pending_job_backlog"):
+        raise RuntimeError("Support runs require pending backlog storage support.")
+
+    pending_rows = storage.load_pending_job_backlog(recipient_id)
+    refetch_statuses = Counter()
+    expired_rows = 0
+    jobs_for_review = []
+
+    for row in pending_rows:
+        job_url = row.get("job_url")
+        if not job_url:
+            continue
+
+        refetch_result = refetch_backlog_job_description(job_url)
+        refetch_status = refetch_result.get("status") or "temporary_failure"
+        refetch_statuses[refetch_status] += 1
+
+        if refetch_status == "ok":
+            jobs_for_review.append(
+                backlog_row_to_gemini_job(
+                    row,
+                    refetch_result.get("description", ""),
+                )
+            )
+            continue
+
+        if refetch_status == "dead" and hasattr(storage, "mark_pending_job_expired"):
+            expired_rows += storage.mark_pending_job_expired(
+                recipient_id,
+                job_url,
+                run_id=run_id,
+                reason=refetch_result.get("reason"),
+            )
+
+    review_result = rerank_jobs_with_gemini(jobs_for_review, recipient_profile)
+    review_result["seen_jobs"] = review_result.get("reviewed_jobs", [])
+    review_result["audit_rows"] = list(review_result.get("audit_rows") or [])
+    review_result["job_state_rows"] = build_job_state_rows(
+        review_result["audit_rows"],
+    )
+    review_result["seen_recorded_count"] = count_seen_job_state_rows(
+        review_result["job_state_rows"],
+        fallback_count=len(review_result.get("seen_jobs") or []),
+    )
+    review_result["backlog_rows_loaded"] = len(pending_rows)
+    review_result["backlog_rows_refetched"] = sum(refetch_statuses.values())
+    review_result["backlog_rows_expired"] = expired_rows
+    review_result["backlog_refetch_statuses"] = dict(refetch_statuses)
+
+    diagnostics.record_recipient_summary(
+        recipient_id,
+        {
+            "input_jobs": 0,
+            "seen_skipped_jobs": 0,
+            "ranked_jobs": 0,
+            "ranked_jobs_passed_to_review": len(jobs_for_review),
+            "ranked_jobs_not_passed_to_review": 0,
+            "review_mode": review_result["review_mode"],
+            "reviewed_jobs": len(review_result["reviewed_jobs"]),
+            "seen_recorded_jobs": review_result["seen_recorded_count"],
+            "llm_shortlisted_jobs": review_result.get("llm_shortlisted_jobs"),
+            "gemini_reviewed_jobs": review_result.get("gemini_reviewed_jobs"),
+            "review_error": review_result.get("review_error"),
+            "review_error_stage": review_result.get("review_error_stage"),
+            "backlog_rows_loaded": len(pending_rows),
+            "backlog_rows_refetched": sum(refetch_statuses.values()),
+            "backlog_rows_expired": expired_rows,
+            "backlog_refetch_statuses": dict(refetch_statuses),
         },
     )
     return review_result
@@ -426,12 +507,20 @@ def process_recipient(
     support_run=False,
 ):
     run_id = run_id or build_run_id()
-    review_result = select_jobs_for_recipient(
-        candidates,
-        recipient_profile,
-        storage,
-        diagnostics,
-    )
+    if support_run:
+        review_result = select_backlog_jobs_for_support_recipient(
+            recipient_profile,
+            storage,
+            diagnostics,
+            run_id=run_id,
+        )
+    else:
+        review_result = select_jobs_for_recipient(
+            candidates,
+            recipient_profile,
+            storage,
+            diagnostics,
+        )
     jobs_to_send = review_result["jobs_to_send"]
     reviewed_jobs = review_result["reviewed_jobs"]
     seen_jobs = review_result.get("seen_jobs", reviewed_jobs)
