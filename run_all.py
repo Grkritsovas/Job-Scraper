@@ -270,6 +270,24 @@ def build_job_state_rows(audit_rows):
     return state_rows
 
 
+def backlog_row_to_gemini_job(row, description):
+    return {
+        "url": row.get("job_url", ""),
+        "company": row.get("company_name", ""),
+        "title": row.get("title", ""),
+        "location": row.get("location", ""),
+        "source": row.get("source_type", ""),
+        "target_value": row.get("target_value", ""),
+        "description": description or "",
+        "semantic_rank": row.get("semantic_rank"),
+        "raw_embedding_score": row.get("raw_embedding_score"),
+        "ranking_score": row.get("semantic_score"),
+        "semantic_threshold": row.get("semantic_threshold"),
+        "salary_upper_bound_gbp": row.get("salary_upper_bound_gbp"),
+        "fit_summary": row.get("semantic_fit_hint", ""),
+    }
+
+
 def mark_result_jobs_queued_for_digest(review_result):
     queued_jobs = list(review_result.get("jobs_to_send") or [])
     queued_urls = {job.get("url") for job in queued_jobs if job.get("url")}

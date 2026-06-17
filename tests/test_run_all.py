@@ -3,10 +3,12 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
+import matching.gemini_rerank as gemini_rerank_module
 from run_all import (
     MAX_RECIPIENT_CONCURRENCY,
     RECIPIENT_CONCURRENCY_CAP,
     RUN_SNAPSHOT_SCHEMA_VERSION,
+    backlog_row_to_gemini_job,
     build_job_state_rows,
     build_run_summary,
     build_run_snapshot,
@@ -461,6 +463,62 @@ class RunAllTests(unittest.TestCase):
             61000.0,
             state_by_url["https://example.com/gemini-failed"]["salary_upper_bound_gbp"],
         )
+
+    def test_backlog_row_to_gemini_job_preserves_prompt_metadata(self):
+        row = {
+            "job_url": "https://example.com/backlog",
+            "company_name": "Example",
+            "title": "Graduate Software Engineer",
+            "location": "London",
+            "source_type": "ashby",
+            "target_value": "example",
+            "semantic_rank": 4,
+            "raw_embedding_score": 0.68,
+            "semantic_score": 0.74,
+            "semantic_threshold": 0.42,
+            "semantic_fit_hint": "Software Engineer 74% | Data 61%",
+            "salary_upper_bound_gbp": 58000.0,
+        }
+
+        job = backlog_row_to_gemini_job(
+            row,
+            "Freshly fetched description with Python API work.",
+        )
+
+        self.assertEqual("https://example.com/backlog", job["url"])
+        self.assertEqual("Example", job["company"])
+        self.assertEqual("Graduate Software Engineer", job["title"])
+        self.assertEqual("London", job["location"])
+        self.assertEqual("ashby", job["source"])
+        self.assertEqual("example", job["target_value"])
+        self.assertEqual(
+            "Freshly fetched description with Python API work.",
+            job["description"],
+        )
+        self.assertEqual(4, job["semantic_rank"])
+        self.assertEqual(0.68, job["raw_embedding_score"])
+        self.assertEqual(0.74, job["ranking_score"])
+        self.assertEqual(0.42, job["semantic_threshold"])
+        self.assertEqual(58000.0, job["salary_upper_bound_gbp"])
+        self.assertEqual("Software Engineer 74% | Data 61%", job["fit_summary"])
+
+        prompt = gemini_rerank_module._build_pass_one_prompt(
+            {
+                "semantic_profiles": ["swe"],
+                "semantic_profile_texts": {
+                    "swe": "Software engineering roles using Python APIs.",
+                },
+                "cv_summary": "Python backend projects.",
+            },
+            [job],
+            gemini_rerank_module.DEFAULT_DESCRIPTION_CHARS,
+        )
+
+        self.assertIn(
+            '"semantic_fit_hint": "Software Engineer 74% | Data 61%"',
+            prompt,
+        )
+        self.assertIn('"salary_upper_bound_gbp": 58000.0', prompt)
 
     def test_support_run_queues_digest_jobs_without_sending(self):
         recipient_profile = {"id": "george", "email": "george@example.com"}
