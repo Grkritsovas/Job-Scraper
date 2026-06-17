@@ -251,6 +251,7 @@ PENDING_JOB_STATE_CLASSIFICATIONS = (
     "gemini_batch_failed_not_seen",
     "gemini_pass1_approved_final_failed_not_seen",
 )
+EXPIRED_JOB_STATE_CLASSIFICATION = "expired_unavailable_seen"
 
 POSTGRES_RECIPIENT_PROFILE_SCHEMA_STATEMENTS = [
     "CREATE SCHEMA IF NOT EXISTS app_config",
@@ -1073,6 +1074,80 @@ class Storage:
             """,
             tuple(params),
         )
+
+    def mark_pending_job_expired(self, recipient_id, job_url, run_id=None, reason=None):
+        if not recipient_id or not job_url:
+            return 0
+
+        placeholder = "?" if self.backend == "sqlite" else "%s"
+        classification_placeholders = ", ".join(
+            placeholder for _classification in PENDING_JOB_STATE_CLASSIFICATIONS
+        )
+        seen_false = "0" if self.backend == "sqlite" else "FALSE"
+        seen_true = "1" if self.backend == "sqlite" else "TRUE"
+        params = [
+            run_id,
+            recipient_id,
+            job_url,
+            *PENDING_JOB_STATE_CLASSIFICATIONS,
+        ]
+
+        if self.backend == "sqlite":
+            connection = self._connect_sqlite()
+            try:
+                cursor = connection.execute(
+                    f"""
+                    UPDATE recipient_seen_jobs
+                    SET
+                        is_seen = {seen_true},
+                        processing_status = 'processed',
+                        classification = ?,
+                        run_id = COALESCE(?, run_id),
+                        review_error_stage = 'url_refetch',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE recipient_id = ?
+                      AND job_url = ?
+                      AND is_seen = {seen_false}
+                      AND classification IN ({classification_placeholders})
+                    """,
+                    (
+                        EXPIRED_JOB_STATE_CLASSIFICATION,
+                        *params,
+                    ),
+                )
+                connection.commit()
+                return cursor.rowcount
+            finally:
+                connection.close()
+
+        connection = self._connect_postgres()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    UPDATE app_config.recipient_seen_jobs
+                    SET
+                        is_seen = {seen_true},
+                        processing_status = 'processed',
+                        classification = %s,
+                        run_id = COALESCE(%s, run_id),
+                        review_error_stage = 'url_refetch',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE recipient_id = %s
+                      AND job_url = %s
+                      AND is_seen = {seen_false}
+                      AND classification IN ({classification_placeholders})
+                    """,
+                    (
+                        EXPIRED_JOB_STATE_CLASSIFICATION,
+                        *params,
+                    ),
+                )
+                updated_count = cursor.rowcount
+            connection.commit()
+            return updated_count
+        finally:
+            connection.close()
 
     def count_recent_pending_job_backlog(self, max_age_hours=None):
         placeholder = "?" if self.backend == "sqlite" else "%s"

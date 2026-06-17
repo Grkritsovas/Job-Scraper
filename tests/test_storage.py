@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from config.recipient_profiles import prepare_recipient_profile_db_rows
-from storage import create_storage
+from storage import EXPIRED_JOB_STATE_CLASSIFICATION, create_storage
 
 
 class StorageTests(unittest.TestCase):
@@ -498,6 +498,191 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(50000.0, loaded[0]["salary_upper_bound_gbp"])
         self.assertEqual("gemini_batch_failed_not_seen", loaded[1]["classification"])
         self.assertEqual(5, storage.count_recent_pending_job_backlog())
+
+    def test_mark_pending_job_expired_marks_dead_row_seen(self):
+        db_path = (self.test_dir / "expired_backlog.db").resolve()
+        storage = create_storage(f"sqlite:///{db_path}")
+        storage.ensure_schema()
+        storage.store_job_state_rows(
+            "recipient-a",
+            "run-1",
+            [
+                {
+                    "job_url": "https://example.com/dead",
+                    "source_type": "ashby",
+                    "company_name": "Example",
+                    "title": "Dead Backlog",
+                    "location": "London",
+                    "review_family": "semantic",
+                    "classification": "semantic_above_threshold_not_reviewed",
+                    "stage": "semantic_ranking",
+                    "is_seen": False,
+                    "semantic_rank": 1,
+                    "semantic_score": 0.8,
+                },
+                {
+                    "job_url": "https://example.com/temporary",
+                    "source_type": "lever",
+                    "company_name": "Example",
+                    "title": "Temporary Failure",
+                    "location": "London",
+                    "review_family": "gemini",
+                    "classification": "gemini_batch_failed_not_seen",
+                    "stage": "gemini_pass1",
+                    "is_seen": False,
+                    "semantic_rank": 2,
+                    "semantic_score": 0.7,
+                },
+            ],
+        )
+        connection = storage._connect_sqlite()
+        try:
+            connection.execute(
+                """
+                UPDATE recipient_seen_jobs
+                SET updated_at = '2000-01-01 00:00:00'
+                WHERE recipient_id = ?
+                  AND job_url = ?
+                """,
+                ("recipient-a", "https://example.com/dead"),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        self.assertEqual(2, storage.count_recent_pending_job_backlog())
+
+        updated_count = storage.mark_pending_job_expired(
+            "recipient-a",
+            "https://example.com/dead",
+            run_id="support-run",
+            reason="404",
+        )
+
+        self.assertEqual(1, updated_count)
+        self.assertEqual(1, storage.count_recent_pending_job_backlog())
+        self.assertEqual(
+            ["https://example.com/temporary"],
+            [
+                row["job_url"]
+                for row in storage.load_pending_job_backlog("recipient-a")
+            ],
+        )
+        self.assertEqual(
+            {"https://example.com/dead"},
+            storage.load_seen_urls("recipient-a"),
+        )
+
+        connection = storage._connect_sqlite()
+        try:
+            row = connection.execute(
+                """
+                SELECT
+                    is_seen,
+                    processing_status,
+                    classification,
+                    review_error_stage,
+                    run_id,
+                    updated_at
+                FROM recipient_seen_jobs
+                WHERE recipient_id = ?
+                  AND job_url = ?
+                """,
+                ("recipient-a", "https://example.com/dead"),
+            ).fetchone()
+        finally:
+            connection.close()
+
+        self.assertEqual(1, row[0])
+        self.assertEqual("processed", row[1])
+        self.assertEqual(EXPIRED_JOB_STATE_CLASSIFICATION, row[2])
+        self.assertEqual("url_refetch", row[3])
+        self.assertEqual("support-run", row[4])
+        self.assertNotEqual("2000-01-01 00:00:00", row[5])
+
+    def test_mark_pending_job_expired_ignores_non_pending_rows(self):
+        db_path = (self.test_dir / "expired_non_pending.db").resolve()
+        storage = create_storage(f"sqlite:///{db_path}")
+        storage.ensure_schema()
+        storage.store_job_state_rows(
+            "recipient-a",
+            "run-1",
+            [
+                {
+                    "job_url": "https://example.com/hard-filtered",
+                    "source_type": "ashby",
+                    "company_name": "Example",
+                    "title": "Hard Filtered",
+                    "location": "London",
+                    "review_family": "hard_filter",
+                    "classification": "hard_filtered",
+                    "stage": "hard_filter",
+                    "is_seen": False,
+                },
+                {
+                    "job_url": "https://example.com/already-seen",
+                    "source_type": "ashby",
+                    "company_name": "Example",
+                    "title": "Already Seen",
+                    "location": "London",
+                    "review_family": "semantic",
+                    "classification": "semantic_above_threshold_seen",
+                    "stage": "semantic_ranking",
+                    "is_seen": True,
+                },
+            ],
+        )
+
+        self.assertEqual(
+            0,
+            storage.mark_pending_job_expired(
+                "recipient-a",
+                "https://example.com/hard-filtered",
+                run_id="support-run",
+            ),
+        )
+        self.assertEqual(
+            0,
+            storage.mark_pending_job_expired(
+                "recipient-a",
+                "https://example.com/already-seen",
+                run_id="support-run",
+            ),
+        )
+
+        connection = storage._connect_sqlite()
+        try:
+            rows = connection.execute(
+                """
+                SELECT job_url, is_seen, classification, review_error_stage, run_id
+                FROM recipient_seen_jobs
+                WHERE recipient_id = ?
+                ORDER BY job_url
+                """,
+                ("recipient-a",),
+            ).fetchall()
+        finally:
+            connection.close()
+
+        self.assertEqual(
+            [
+                (
+                    "https://example.com/already-seen",
+                    1,
+                    "semantic_above_threshold_seen",
+                    None,
+                    "run-1",
+                ),
+                (
+                    "https://example.com/hard-filtered",
+                    0,
+                    "hard_filtered",
+                    None,
+                    "run-1",
+                ),
+            ],
+            rows,
+        )
 
     def test_review_backlog_count_uses_recent_pending_job_state_rows(self):
         db_path = (self.test_dir / "state_backlog.db").resolve()
