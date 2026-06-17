@@ -58,7 +58,7 @@ Semantic matches below the threshold are marked seen after ranking so the same w
 
 ## Support Runs
 
-The workflow has main scheduled runs and support schedules. Main schedules run the full scraper. Support schedules first run `check_review_backlog.py`, which queries recent pending rows in the job state table. If no recent backlog exists, the workflow skips full dependency installation and scraper execution.
+The workflow has main scheduled runs and support schedules. Main schedules run the full scraper. Support schedules first run `check_review_backlog.py`, which queries recent pending rows in the job state table. If no recent backlog exists, the workflow skips full dependency installation and scraper execution. If backlog exists, the support run processes only stored pending backlog rows.
 
 Current scheduled times are UTC:
 - main runs: `09:30`, `16:30`
@@ -116,6 +116,16 @@ The scraper stores per-recipient job processing state in:
 - `recipient_seen_jobs` on local SQLite
 
 Rows with `is_seen=true` are skipped in future runs. Rows with `is_seen=false` are pending backlog rows that can be picked up by support runs. Support runs check recent pending rows before installing full scraper dependencies.
+
+Support runs are backlog-only. They do not scrape the configured source families,
+do not apply hard filters, and do not run semantic ranking. They load pending
+rows, refetch each stored job URL, and pass only successfully refetched backlog
+jobs to Gemini using the stored semantic metadata. Full descriptions from the
+refetch are not stored.
+
+Temporary URL refetch failures remain pending. Clearly dead URLs, such as 404 or
+410 pages, are marked seen with an expired classification so they no longer
+trigger backlog processing.
 
 Support runs do not send digest emails directly. Approved support-run jobs are queued in:
 - `app_config.recipient_digest_queue` on Postgres/Supabase
@@ -212,7 +222,7 @@ Each `config_json` record should look like this:
 - `llm_review.extra_final_ranking_guidance`
   Extra natural-language rules injected into Gemini pass two.
 
-## Matching Flow
+## Main Run Matching Flow
 
 1. Scrape jobs from the configured sources.
 2. Drop jobs already seen for that recipient.
@@ -226,6 +236,9 @@ Each `config_json` record should look like this:
 6. Apply the optional salary penalty.
 7. Drop jobs below `matching.semantic_threshold`.
 8. If Gemini is enabled, run two-pass Gemini screening and reranking.
+
+Support runs skip this matching flow. They use pending backlog rows that already
+have stored semantic metadata from an earlier main run.
 
 Recipient diagnostic lines include the review mode and counts. When Gemini fails,
 the line also includes `review_error_stage` and a compact `review_error` value so
@@ -275,7 +288,7 @@ Use `--semantic-only` to temporarily disable Gemini for the replay process, and
 - The implementation enforces a hard upper bound of `8` recipient workers even if the code cap is raised later.
 - Gemini calls inside the recipient threads are capped separately at `4` concurrent requests.
 - Gemini retrying uses exponential backoff with a shared retry budget of up to `10` minutes per recipient rerank attempt.
-- Scraping runs the four source families in parallel:
+- Main-run scraping runs the four source families in parallel:
   - Ashby
   - Greenhouse
   - Lever

@@ -1,8 +1,7 @@
 # Intended Behavior
 
-This document explains what the main job-scraper features are meant to do in
-plain language. It is intentionally about behavior and workflow intent, not a
-complete implementation reference.
+The scraper has two run modes: main runs that discover and review new jobs, and
+support runs that retry stored pending backlog.
 
 ## Job State And Backlog
 
@@ -14,6 +13,7 @@ The backlog feature itself is simple:
   - semantic below threshold: store as processed/seen, skip next time
   - semantic above threshold but not in top N: store as pending/backlog, support run can pick it up later
   - Gemini failed before reviewing: store as pending/backlog
+  - pending backlog URL is dead: store as expired/seen
   - Gemini reviewed/rejected/sent: store as processed/seen
 - Extra scheduled runs check: "are there pending backlog jobs?" If no, exit. If yes, run.
 
@@ -39,10 +39,18 @@ Normal runs always scrape, rank, review, send, and store state.
 
 Support runs first check the database for recent pending rows in
 `recipient_seen_jobs`. If no pending rows exist, the workflow exits before
-installing full scraper dependencies. If pending rows exist, the support run
-executes the scraper normally. This gives above-threshold jobs that missed the
-top-N review cap, or jobs blocked by a temporary Gemini outage, another chance to
-be reviewed without manually starting the workflow.
+installing full scraper dependencies.
+
+If pending rows exist, the support run is backlog-only. It does not scrape full
+source families and does not run hard filters or semantic ranking. For each
+recipient it loads pending backlog rows, refetches the current job URL, rebuilds
+a compact Gemini job from stored metadata plus the freshly fetched description,
+and sends those jobs to Gemini review.
+
+Temporary URL refetch failures, such as timeouts, connection errors, rate limits,
+and 5xx responses, remain pending so a later support run can try again. Clearly
+dead URLs, such as 404 or 410 pages, are marked expired/seen and no longer count
+as backlog.
 
 Support runs are review-only for email delivery. If Gemini approves jobs during a
 support run, those jobs are stored in `recipient_digest_queue` instead of being
@@ -65,6 +73,9 @@ Audit rows intentionally avoid full recipient profile JSON and full job
 descriptions. They keep job metadata, scores, thresholds, categories, concise
 Gemini reasons, and short evidence snippets.
 
+Support runs also avoid persisting full descriptions. Freshly refetched
+descriptions are used for the current Gemini review only.
+
 ## Semantic Matching
 
 Semantic matching is a retrieval layer. Its job is to narrow a large scrape down
@@ -86,8 +97,9 @@ inspected.
 
 ## Gemini Review
 
-When `GEMINI_API_KEY` is configured, Gemini review is mandatory for ranked jobs.
-There is no semantic fallback if Gemini fails.
+When `GEMINI_API_KEY` is configured, Gemini review is mandatory for ranked jobs
+on main runs and refetched backlog jobs on support runs. There is no semantic
+fallback if Gemini fails.
 
 Gemini uses a two-pass review:
 
