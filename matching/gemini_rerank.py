@@ -408,6 +408,11 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "usually make a role weak unless the job text explicitly accepts learning "
             "or project/academic evidence."
         ),
+        "semantic_hint_rule": (
+            "semantic_fit_hint is a rough embedding retrieval signal, not calibrated "
+            "probability or evidence of realistic fit. Use it only as weak context; "
+            "base decisions on the job text, candidate context, and target profiles."
+        ),
         "cv_usage": (
             "The CV summary is supporting context only. "
             "Use it to judge transferable evidence, not to override the target profiles."
@@ -544,6 +549,11 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "Required production ownership, required technologies absent from the "
             "candidate context, and specialist platform or domain experience should "
             "usually make a role weaker than a less glamorous but more hireable match."
+        ),
+        "semantic_hint_rule": (
+            "semantic_fit_hint is a rough embedding retrieval signal, not calibrated "
+            "probability or evidence of realistic fit. Use it only as weak context; "
+            "base decisions on the job text, candidate context, and target profiles."
         ),
         "employability_rule": (
             "Focus on realistic employability today. "

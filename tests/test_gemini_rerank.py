@@ -214,12 +214,17 @@ class GeminiRerankTests(unittest.TestCase):
 
         first_prompt = client.models.calls[0]["contents"]
         second_prompt = client.models.calls[1]["contents"]
+        semantic_hint_warning = (
+            "semantic_fit_hint is a rough embedding retrieval signal, not calibrated "
+            "probability or evidence of realistic fit."
+        )
         self.assertIn("Strong Python, ML, and data project experience.", first_prompt)
         self.assertIn("Graduated Oct 2025; not a current student.", first_prompt)
         self.assertIn("Graduate visa valid until Feb 2028.", first_prompt)
         self.assertIn('"label": "SWE"', first_prompt)
         self.assertIn('"label": "Data Science"', first_prompt)
         self.assertIn('"url": "https://example.com/job-2"', first_prompt)
+        self.assertIn('"semantic_fit_hint": "SWE 58% | Data Science 46%"', first_prompt)
         self.assertIn('"preferred_salary_max_gbp": 85000.0', first_prompt)
         self.assertIn('"salary_hard_cap_gbp": 95000.0', first_prompt)
         self.assertIn('"salary_upper_bound_gbp": 100000.0', first_prompt)
@@ -236,11 +241,14 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertIn("strong thematic relevance", first_prompt)
         self.assertIn('"hard_requirement_rule"', first_prompt)
         self.assertIn("Penalize hard requirements", first_prompt)
+        self.assertIn('"semantic_hint_rule"', first_prompt)
+        self.assertIn(semantic_hint_warning, first_prompt)
         self.assertIn('"junior_claim_rule"', first_prompt)
         self.assertIn("Do not describe a role as junior", first_prompt)
         self.assertIn('"junior_targeting_rule"', first_prompt)
         self.assertIn("accepts academic/project experience", first_prompt)
         self.assertIn('"matched_profile": "Data Science"', second_prompt)
+        self.assertIn('"semantic_fit_hint": "SWE 58% | Data Science 46%"', second_prompt)
         self.assertIn("Graduated Oct 2025; not a current student.", second_prompt)
         self.assertIn("Graduate visa valid until Feb 2028.", second_prompt)
         self.assertIn('"supporting_evidence": [', second_prompt)
@@ -255,6 +263,8 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertIn('"infrastructure_scope_rule"', second_prompt)
         self.assertIn('"fit_dimension_rule"', second_prompt)
         self.assertIn('"hard_requirement_rule"', second_prompt)
+        self.assertIn('"semantic_hint_rule"', second_prompt)
+        self.assertIn(semantic_hint_warning, second_prompt)
         self.assertIn('"junior_claim_rule"', second_prompt)
         self.assertIn('"junior_targeting_rule"', second_prompt)
 
