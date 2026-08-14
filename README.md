@@ -22,7 +22,7 @@ The intended scale is a small admin-run setup, roughly up to 8 recipients per ru
 
 - loads public job-board targets from config
 - loads recipient profiles from the database
-- scrapes Ashby, Greenhouse, Lever, and selected Next.js boards
+- ingests API data from Ashby, Greenhouse, Lever, and selected Next.js boards
 - ranks jobs separately for each recipient profile with semantic matching
 - optionally reranks top semantic matches with Gemini for stricter final selection
 - skips jobs already reviewed for that recipient
