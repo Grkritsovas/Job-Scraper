@@ -11,7 +11,7 @@ from shared.descriptions import focus_role_matching_text, normalize_text_whitesp
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 DEFAULT_TOP_N = 100
 DEFAULT_BATCH_SIZE = 10
-DEFAULT_DESCRIPTION_CHARS = 4000
+DEFAULT_DESCRIPTION_CHARS = 8000
 DEFAULT_EVIDENCE_ITEMS = 2
 DEFAULT_GEMINI_RETRY_ATTEMPTS = 20
 DEFAULT_GEMINI_RETRY_BASE_SECONDS = 5.0
@@ -491,8 +491,9 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
             "Reject roles with hard eligibility requirements the candidate is unlikely to meet. "
             "This includes SC clearance, DV clearance, security vetting, nationality or citizenship restrictions, "
             "and explicit continuous UK residency requirements such as 3 years, 5 years, or similar. "
-            "Use work_authorization_summary when provided. Do not keep these roles unless "
-            "the candidate context directly confirms eligibility. If work_authorization_summary "
+            "Check the entire provided job description for eligibility restrictions. "
+            "Use work_authorization_summary when provided. Do not keep these roles unless the candidate context"
+            " directly confirms eligibility. If work_authorization_summary "
             "mentions time-limited authorization or a visa expiry, treat explicit no-sponsorship "
             "language as a significant mismatch for roles that appear to require work beyond "
             "that authorization window, but do not reject solely because sponsorship is unstated."
@@ -517,13 +518,17 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
     )
 
 
-def _build_pass_two_prompt(recipient_profile, candidates):
+def _build_pass_two_prompt(recipient_profile, candidates, description_chars):
     candidate_cards = [
         {
             "url": candidate["url"],
             "company": normalize_text_whitespace(candidate.get("company", "")),
             "title": normalize_text_whitespace(candidate.get("title", "")),
             "location": normalize_text_whitespace(candidate.get("location", "")),
+            "description_excerpt": _trim_description(
+                candidate.get("description", ""),
+                description_chars,
+            ),
             "salary_upper_bound_gbp": candidate.get("salary_upper_bound_gbp"),
             "matched_profile": candidate.get("llm_matched_profile", ""),
             "batch_fit_score": candidate.get("llm_fit_score", 0),
@@ -600,7 +605,7 @@ def _build_pass_two_prompt(recipient_profile, candidates):
         "output_rule": (
             "Return every screened candidate exactly once, either in "
             "shortlisted_jobs or rejected_jobs. For why_apply and "
-            "rejection_reason, write at most 2 short simple sentences."
+            "rejection_reason, write at most 1 short simple sentence."
         ),
     }
     if recipient_profile.get("care_about_hard_eligibility", False):
@@ -608,11 +613,13 @@ def _build_pass_two_prompt(recipient_profile, candidates):
             "Reject roles with hard eligibility requirements the candidate is unlikely to meet. "
             "This includes SC clearance, DV clearance, security vetting, nationality or citizenship restrictions, "
             "and explicit continuous UK residency requirements such as 3 years, 5 years, or similar. "
-            "Use work_authorization_summary when provided. Do not keep these roles unless "
-            "the candidate context directly confirms eligibility. If work_authorization_summary "
-            "mentions time-limited authorization or a visa expiry, treat explicit no-sponsorship "
-            "language as a significant mismatch for roles that appear to require work beyond "
-            "that authorization window, but do not reject solely because sponsorship is unstated."
+            "Check the entire provided job description for eligibility restrictions. "
+            "Use work_authorization_summary when provided. "
+            "Do not keep these roles unless the candidate context directly confirms eligibility. "
+            "If work_authorization_summary mentions time-limited authorization or a visa expiry, "
+            "treat explicit no-sponsorship language as a significant mismatch for roles that appear "
+            "to require work beyond that authorization window, but do not reject solely because "
+            "sponsorship is unstated."
         )
     _add_salary_rule(instructions, recipient_profile)
     _add_junior_targeting_rule(instructions, recipient_profile)
@@ -792,13 +799,17 @@ def _run_batch_screening(
             PASS_ONE_JSON_SCHEMA,
             retry_deadline=retry_deadline,
         )
+        valid_profiles = {
+            spec["label"]
+            for spec in build_profile_specs(recipient_profile)
+        }
         for item in payload.get("candidates", []):
             job_url = normalize_text_whitespace(item.get("job_url", ""))
             if not job_url or job_url in seen_urls or job_url not in batch_by_url:
                 continue
 
             matched_profile = normalize_text_whitespace(item.get("matched_profile", ""))
-            if not matched_profile:
+            if matched_profile not in valid_profiles:
                 continue
             handled_batch_urls.add(job_url)
 
@@ -861,7 +872,14 @@ def _run_batch_screening(
     return screened_candidates, pass_one_rejections
 
 
-def _run_final_rerank(candidates, recipient_profile, client, model, retry_deadline):
+def _run_final_rerank(
+    candidates,
+    recipient_profile,
+    client,
+    model,
+    retry_deadline,
+    description_chars,
+):
     if not candidates:
         return [], {}
 
@@ -870,7 +888,11 @@ def _run_final_rerank(candidates, recipient_profile, client, model, retry_deadli
         for candidate in candidates
         if candidate.get("url")
     }
-    prompt = _build_pass_two_prompt(recipient_profile, candidates)
+    prompt = _build_pass_two_prompt(
+        recipient_profile,
+        candidates,
+        description_chars,
+    )
     payload = _generate_json_response(
         client,
         model,
@@ -1081,7 +1103,7 @@ def rerank_jobs_with_gemini(
     effective_top_n = get_llm_top_n(len(jobs), override=top_n)
     candidate_jobs = jobs[:effective_top_n]
 
-    if not gemini_rerank_enabled():
+    if client is None and not gemini_rerank_enabled():
         return _build_result(
             candidate_jobs,
             candidate_jobs,
@@ -1205,6 +1227,7 @@ def rerank_jobs_with_gemini(
             client,
             effective_model,
             retry_deadline,
+            effective_description_chars,
         )
     except Exception as exc:
         error_message = str(exc)
