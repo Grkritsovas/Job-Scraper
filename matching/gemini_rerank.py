@@ -353,6 +353,21 @@ def _add_salary_rule(instructions, recipient_profile):
     )
 
 
+def _add_communication_language_rule(instructions, recipient_profile):
+    communication_language = normalize_text_whitespace(
+        recipient_profile.get("communication_language", "")
+    )
+    if not communication_language:
+        return
+
+    instructions["communication_language_rule"] = (
+        "The recipient prefers to read digest explanations in "
+        f"{communication_language}. Write user-facing why_apply text in "
+        f"{communication_language}. Keep supporting_evidence and "
+        "mismatch_evidence as exact or near-exact snippets from the job text."
+    )
+
+
 def _add_extra_guidance(instructions, key, guidance_items):
     cleaned = [
         normalize_text_whitespace(item)
@@ -500,6 +515,7 @@ def _build_pass_one_prompt(recipient_profile, jobs, description_chars):
         )
     _add_salary_rule(instructions, recipient_profile)
     _add_junior_targeting_rule(instructions, recipient_profile)
+    _add_communication_language_rule(instructions, recipient_profile)
     _add_extra_guidance(
         instructions,
         "extra_screening_guidance",
@@ -623,6 +639,7 @@ def _build_pass_two_prompt(recipient_profile, candidates, description_chars):
         )
     _add_salary_rule(instructions, recipient_profile)
     _add_junior_targeting_rule(instructions, recipient_profile)
+    _add_communication_language_rule(instructions, recipient_profile)
     _add_extra_guidance(
         instructions,
         "extra_final_ranking_guidance",

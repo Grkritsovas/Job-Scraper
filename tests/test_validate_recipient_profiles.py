@@ -11,7 +11,7 @@ def make_profile(**overrides):
     profile = {
         "id": "george",
         "enabled": True,
-        "delivery": {"email": "george@example.com"},
+        "delivery": {"email": "george@example.com", "language": "Greek"},
         "candidate": {
             "summary": "Early-career Python and ML project experience.",
             "target_roles": [{"id": "swe"}],
@@ -53,6 +53,7 @@ class ValidateRecipientProfilesTests(unittest.TestCase):
         self.assertTrue(results[0]["ok"])
         self.assertEqual("george", results[0]["recipient_id"])
         self.assertEqual("george@example.com", results[0]["email"])
+        self.assertEqual("Greek", results[0]["language"])
         self.assertEqual(["swe"], results[0]["target_roles"])
 
     def test_validate_profile_configs_collects_invalid_profile_errors(self):
@@ -92,6 +93,7 @@ class ValidateRecipientProfilesTests(unittest.TestCase):
         line = print_mock.call_args.args[0]
         self.assertIn("OK profile[0]", line)
         self.assertIn("id=george", line)
+        self.assertIn("language=Greek", line)
         self.assertIn("target_roles=swe", line)
 
 

@@ -147,7 +147,8 @@ Each `config_json` record should look like this:
   "id": "demo-recipient",
   "enabled": true,
   "delivery": {
-    "email": "recipient@example.com"
+    "email": "recipient@example.com",
+    "language": ""
   },
   "candidate": {
     "summary": "Short factual candidate summary.",
@@ -187,6 +188,10 @@ Each `config_json` record should look like this:
 
 ## What Each Field Affects
 
+- `delivery.email`
+  Recipient email address for digest delivery.
+- `delivery.language`
+  Optional preferred language for user-facing Gemini `why_apply` digest text, for example `Greek`. If omitted, Gemini uses its default response language.
 - `candidate.target_roles`
   Defines the role families used for semantic matching.
 - `candidate.target_roles[*].match_text`

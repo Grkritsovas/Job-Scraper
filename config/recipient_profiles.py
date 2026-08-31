@@ -162,7 +162,7 @@ def normalize_grouped_profile(profile, index=0, sender_email=""):
     matching_config = profile.get("matching") or {}
     llm_review_config = profile.get("llm_review") or {}
 
-    _reject_unknown_keys(delivery_config, {"email"}, "delivery")
+    _reject_unknown_keys(delivery_config, {"email", "language"}, "delivery")
     _reject_unknown_keys(
         candidate_config,
         {"summary", "education_status", "target_roles"},
@@ -208,6 +208,7 @@ def normalize_grouped_profile(profile, index=0, sender_email=""):
                 delivery_config.get("email") or profile.get("email")
             )
             or _normalize_text(sender_email),
+            "language": _normalize_text(delivery_config.get("language")),
         },
         "candidate": {
             "summary": _normalize_text(candidate_config.get("summary")),
@@ -326,6 +327,9 @@ def _to_runtime_profile(grouped_profile):
         "id": grouped_profile["id"],
         "enabled": bool(grouped_profile.get("enabled", True)),
         "email": grouped_profile["delivery"]["email"],
+        "communication_language": _normalize_text(
+            grouped_profile["delivery"].get("language")
+        ),
         "semantic_profiles": semantic_profiles,
         "semantic_profile_texts": semantic_profile_texts,
         "cv_summary": _normalize_text(grouped_profile["candidate"].get("summary")),

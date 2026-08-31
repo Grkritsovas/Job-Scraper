@@ -23,6 +23,7 @@ Top-level fields:
 - `id`
 - `enabled`
 - `delivery.email`
+- `delivery.language`
 - `candidate.summary`
 - `candidate.education_status`
 - `candidate.target_roles`
@@ -34,6 +35,7 @@ Top-level fields:
 
 Useful notes:
 - `candidate.target_roles[*].match_text` is the strongest personalization lever for semantic ranking.
+- `delivery.language` optionally tells Gemini what language to use for user-facing `why_apply` digest text.
 - `candidate.summary`, `candidate.education_status`, and `eligibility.work_authorization_summary` are sent to Gemini as candidate context.
 - `job_preferences.target_seniority.max_explicit_years` controls the regex-based experience filter.
 - `job_preferences.target_seniority.boost_multiplier` and `boost_title_terms` control the title boost for junior-oriented titles.

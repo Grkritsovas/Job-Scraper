@@ -53,6 +53,7 @@ def validate_profile_configs(configs, sender_email=""):
                 "label": label,
                 "recipient_id": normalized["id"],
                 "email": normalized["delivery"]["email"],
+                "language": normalized["delivery"].get("language", ""),
                 "enabled": bool(normalized.get("enabled", True)),
                 "target_roles": [
                     role["id"] for role in normalized["candidate"]["target_roles"]
@@ -86,10 +87,12 @@ def print_validation_results(results):
     for result in results:
         if result["ok"]:
             role_list = ",".join(result["target_roles"]) or "-"
+            language = result.get("language") or "-"
             print(
                 f"OK profile[{result['index']}] "
                 f"id={result['recipient_id']} "
                 f"email={result['email']} "
+                f"language={language} "
                 f"enabled={1 if result['enabled'] else 0} "
                 f"target_roles={role_list}"
             )

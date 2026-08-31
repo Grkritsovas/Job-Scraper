@@ -24,7 +24,10 @@ class AdminUiTests(unittest.TestCase):
         result = self.controller.save_profile(
             {
                 "id": "demo-recipient",
-                "delivery": {"email": "recipient@example.com"},
+                "delivery": {
+                    "email": "recipient@example.com",
+                    "language": "Greek",
+                },
                 "candidate": {
                     "summary": "Python projects.",
                     "target_roles": [{"id": "swe"}],
@@ -38,10 +41,13 @@ class AdminUiTests(unittest.TestCase):
         profiles = self.controller.list_profiles()["profiles"]
         self.assertEqual(1, len(profiles))
         self.assertEqual("demo_recipient", profiles[0]["id"])
+        self.assertEqual("Greek", profiles[0]["language"])
         self.assertEqual(["swe"], profiles[0]["target_roles"])
 
         loaded = self.controller.get_profile("demo_recipient")
         self.assertEqual("recipient@example.com", loaded["summary"]["email"])
+        self.assertEqual("Greek", loaded["summary"]["language"])
+        self.assertEqual("Greek", loaded["profile"]["delivery"]["language"])
         self.assertEqual(0.42, loaded["profile"]["matching"]["semantic_threshold"])
 
     def test_validate_profile_reports_normalization_errors(self):

@@ -3,7 +3,8 @@
     "id": "demo-recipient",
     "enabled": true,
     "delivery": {
-      "email": "you@example.com"
+      "email": "you@example.com",
+      "language": ""
     },
     "candidate": {
       "summary": "Early-career technical candidate with strong Python, applied machine learning, data processing, and project-based software engineering experience. Best fit for junior roles that value transferable technical problem solving over long commercial experience.",
@@ -50,7 +51,8 @@
     "id": "demo-marketing-recipient",
     "enabled": true,
     "delivery": {
-      "email": "marketing-recipient@example.com"
+      "email": "marketing-recipient@example.com",
+      "language": ""
     },
     "candidate": {
       "summary": "Early-career candidate with communication, coordination, and analytical support strengths, plus growing AI and data exposure. Best fit for junior roles with clear structure, mentoring, and room to learn on the job.",

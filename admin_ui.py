@@ -157,6 +157,7 @@ class AdminController:
         return {
             "id": profile.get("id") or (record or {}).get("recipient_id", ""),
             "email": delivery.get("email") or profile.get("email") or "",
+            "language": delivery.get("language") or "",
             "enabled": bool(profile.get("enabled", True)),
             "target_roles": [
                 role.get("id") if isinstance(role, dict) else role

@@ -101,7 +101,7 @@ function renderProfileList() {
     button.innerHTML = `
       <strong>${escapeHtml(profile.id)}</strong>
       <span>${escapeHtml(profile.email || "-")}</span>
-      <span>${profile.enabled ? "enabled" : "disabled"} - ${escapeHtml((profile.target_roles || []).join(", ") || "no roles")}</span>
+      <span>${profile.enabled ? "enabled" : "disabled"} - ${escapeHtml(profile.language || "default language")} - ${escapeHtml((profile.target_roles || []).join(", ") || "no roles")}</span>
     `;
     button.addEventListener("click", () => selectProfile(profile.id));
     els.profileList.appendChild(button);
@@ -122,7 +122,7 @@ function newProfile() {
   state.selectedProfileId = "";
   state.versions = [];
   renderProfileForm(defaultProfile());
-  renderSelectedProfile({ id: "new-recipient", email: "recipient@example.com", target_roles: ["swe"], enabled: true });
+  renderSelectedProfile({ id: "new-recipient", email: "recipient@example.com", language: "", target_roles: ["swe"], enabled: true });
   renderProfileVersions([]);
   setProfileStatus("", "");
   renderProfileList();
@@ -250,6 +250,7 @@ function renderProfileForm(profile) {
       textField("id", "id", normalized.id),
       checkboxField("enabled", "enabled", normalized.enabled),
       textField("delivery.email", "delivery_email", normalized.delivery.email),
+      textField("delivery.language", "delivery_language", normalized.delivery.language),
     ].join(""))}
     ${profileSection("Candidate", "candidate", [
       textareaField("candidate.summary", "candidate_summary", normalized.candidate.summary, 5),
@@ -359,6 +360,7 @@ function readProfileEditor() {
     enabled: fieldChecked("enabled"),
     delivery: {
       email: fieldValue("delivery_email"),
+      language: fieldValue("delivery_language"),
     },
     candidate: {
       summary: fieldValue("candidate_summary"),
@@ -414,6 +416,7 @@ function syncProfilePreview() {
     renderSelectedProfile({
       id: profile.id,
       email: profile.delivery.email,
+      language: profile.delivery.language,
       enabled: profile.enabled,
       target_roles: profile.candidate.target_roles.map((role) => role.id).filter(Boolean),
     });
@@ -424,8 +427,9 @@ function syncProfilePreview() {
 
 function renderSelectedProfile(summary) {
   const roles = (summary?.target_roles || []).join(", ") || "no roles";
+  const language = summary?.language || "default language";
   els.selectedProfileTitle.textContent = summary?.id || "No profile selected";
-  els.selectedProfileMeta.textContent = `${summary?.email || "-"} - ${summary?.enabled ? "enabled" : "disabled"} - ${roles}`;
+  els.selectedProfileMeta.textContent = `${summary?.email || "-"} - ${summary?.enabled ? "enabled" : "disabled"} - ${language} - ${roles}`;
 }
 
 function setProfileStatus(message, kind) {
@@ -450,6 +454,7 @@ function normalizeProfileForForm(profile) {
     enabled: profile.enabled !== false,
     delivery: {
       email: (profile.delivery || {}).email || profile.email || "",
+      language: (profile.delivery || {}).language || "",
     },
     candidate: {
       summary: candidate.summary || "",
@@ -494,6 +499,7 @@ function defaultProfile() {
     enabled: true,
     delivery: {
       email: "recipient@example.com",
+      language: "",
     },
     candidate: {
       summary: "",

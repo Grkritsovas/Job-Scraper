@@ -26,7 +26,7 @@ class RecipientProfilesTests(unittest.TestCase):
             {
                 "id": "george",
                 "enabled": True,
-                "delivery": {"email": "george@example.com"},
+                "delivery": {"email": "george@example.com", "language": "Greek"},
                 "candidate": {
                     "summary": "Strong Python and ML project experience for junior roles.",
                     "education_status": "Graduated Oct 2025; not a current student.",
@@ -74,6 +74,7 @@ class RecipientProfilesTests(unittest.TestCase):
         self.assertEqual(1, len(rows))
         self.assertEqual("george", rows[0]["recipient_id"])
         self.assertEqual("george@example.com", rows[0]["email"])
+        self.assertEqual("Greek", rows[0]["config"]["delivery"]["language"])
         self.assertEqual(2, rows[0]["config"]["job_preferences"]["target_seniority"]["max_explicit_years"])
         self.assertEqual(
             "Graduated Oct 2025; not a current student.",
@@ -135,7 +136,7 @@ class RecipientProfilesTests(unittest.TestCase):
                     {
                         "id": "george",
                         "enabled": True,
-                        "delivery": {"email": "george@example.com"},
+                        "delivery": {"email": "george@example.com", "language": "Greek"},
                         "candidate": {
                             "summary": "Strong Python and ML project experience.",
                             "education_status": "Graduated Oct 2025; not a current student.",
@@ -223,6 +224,7 @@ class RecipientProfilesTests(unittest.TestCase):
         self.assertEqual(1, len(profiles))
         self.assertEqual("george", profiles[0]["id"])
         self.assertEqual("george@example.com", profiles[0]["email"])
+        self.assertEqual("Greek", profiles[0]["communication_language"])
         self.assertEqual(["swe"], profiles[0]["semantic_profiles"])
         self.assertEqual(2, profiles[0]["max_years_experience"])
         self.assertEqual(

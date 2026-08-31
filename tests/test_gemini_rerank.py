@@ -126,6 +126,7 @@ class GeminiRerankTests(unittest.TestCase):
             "cv_summary": "Strong Python, ML, and data project experience.",
             "education_status": "Graduated Oct 2025; not a current student.",
             "work_authorization_summary": "Graduate visa valid until Feb 2028.",
+            "communication_language": "Greek",
             "max_years_experience": 1,
             "preferred_salary_max_gbp": 85000.0,
             "salary_hard_cap_gbp": 95000.0,
@@ -247,6 +248,8 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertIn("Do not describe a role as junior", first_prompt)
         self.assertIn('"junior_targeting_rule"', first_prompt)
         self.assertIn("accepts academic/project experience", first_prompt)
+        self.assertIn('"communication_language_rule"', first_prompt)
+        self.assertIn("Write user-facing why_apply text in Greek", first_prompt)
         self.assertIn('"matched_profile": "Data Science"', second_prompt)
         self.assertIn('"semantic_fit_hint": "SWE 58% | Data Science 46%"', second_prompt)
         self.assertIn("Graduated Oct 2025; not a current student.", second_prompt)
@@ -267,6 +270,8 @@ class GeminiRerankTests(unittest.TestCase):
         self.assertIn(semantic_hint_warning, second_prompt)
         self.assertIn('"junior_claim_rule"', second_prompt)
         self.assertIn('"junior_targeting_rule"', second_prompt)
+        self.assertIn('"communication_language_rule"', second_prompt)
+        self.assertIn("Write user-facing why_apply text in Greek", second_prompt)
 
     def test_gemini_job_payload_uses_role_focused_default_excerpt(self):
         description = (
